@@ -182,4 +182,22 @@ describe("MetaCube native controller", () => {
     await first;
     service.close();
   });
+  it("uses the native group test instead of issuing one request per member", async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ proxies: { G: { all: ["a", "b"] } } })),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ a: 65, b: 72 })));
+    vi.stubGlobal("fetch", f);
+    const response = await app.inject({
+      method: "POST",
+      url: route(id) + "/actions",
+      payload: { action: "delay-group", name: "G" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(f.mock.calls[1][0].pathname).toBe("/group/G/delay");
+    expect(f.mock.calls[1][0].searchParams.get("timeout")).toBe("5000");
+  });
 });

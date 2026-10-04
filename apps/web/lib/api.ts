@@ -235,6 +235,8 @@ function buildUrl(base: string, params: Record<string, string | number | undefin
 }
 
 export const api = {
+  getOpenClash: (backendId:number) => fetchJson<{state:MonitorObject|null;receivedAt:number|null;pending:string|null;routerUrl:string}>(buildUrl(`${API_BASE}/monitor/openclash`,{backendId})),
+  controlOpenClash: (backendId:number, action:Record<string,string>) => fetchJson<{queued:boolean;id:string;createdAt:number}>(`${API_BASE}/monitor/openclash`,'POST',{backendId,...action}),
   coreResource: (backendId: number, resource: string) => fetchJson<Record<string, unknown>>(`${API_BASE}/core-control/${backendId}/${resource}`),
   coreAction: (backendId: number, action: Record<string, unknown>) => fetchJson<{result: unknown}>(`${API_BASE}/core-control/${backendId}/actions`, 'POST', action),
   probeMonitorNode: (backendId: number, node: string) => fetchJson<{queued:boolean}>(`${API_BASE}/monitor/probe`,'POST',{backendId,node}),

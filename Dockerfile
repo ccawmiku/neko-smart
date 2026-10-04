@@ -78,6 +78,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD ["/bin/sh", "-c", "wget -q --spider http://127.0.0.1:${API_PORT}/health || exit 1"]
 
 # Start script
+COPY tools/runtime-db.mjs ./tools/runtime-db.mjs
 COPY docker-start.sh ./
 RUN chmod +x docker-start.sh
 

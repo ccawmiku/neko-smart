@@ -61,6 +61,7 @@ jobs:
           images: |
             ${{ env.GHCR_IMAGE }}
           tags: |
+            type=raw,value=router,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
             type=raw,value=${{ steps.pkg.outputs.version }},enable=${{ github.ref_name == 'main' }}
             type=raw,value=${{ steps.preview.outputs.tag }},enable=${{ steps.preview.outputs.enabled == 'true' }}
@@ -81,4 +82,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event_name == 'workflow_dispatch' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}

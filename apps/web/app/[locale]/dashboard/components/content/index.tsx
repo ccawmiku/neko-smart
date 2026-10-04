@@ -1,4 +1,5 @@
 "use client";
+import { OpenClashControl } from "@/components/features/core-control/openclash-control";
 import { CoreControl } from "@/components/features/core-control";
 
 import { MonitorContent } from "@/components/features/monitor";
@@ -75,6 +76,7 @@ const OverviewContent = memo(function OverviewContent({
 }) {
   return (
     <div className="space-y-6">
+      <OpenClashControl key={activeBackendId} backendId={activeBackendId} autoRefresh={autoRefresh} />
       <StatsCards 
         data={data} 
         error={error} 

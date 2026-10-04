@@ -183,6 +183,37 @@ export class CoreControlService {
       if (name.length > 256 || /[\r\n\0]/.test(name))
         throw new CoreError(400, "Invalid name");
       switch (body.action) {
+        case "delay-group":
+        case "delay-all": {
+          const proxies = (await client.fetchProxiesAPI()).proxies;
+          const names =
+            body.action === "delay-all"
+              ? Array.isArray(object(proxies.GLOBAL).all)
+                ? ["GLOBAL"]
+                : Object.keys(proxies).filter((n) =>
+                    Array.isArray(object(proxies[n]).all),
+                  )
+              : [name];
+          if (
+            !names.length ||
+            names.some((n) => !Array.isArray(object(proxies[n]).all))
+          )
+            throw new CoreError(400, "Unknown group");
+          // Let Mihomo test its groups; no duplicate per-node request fanout in the panel.
+          const result: CoreObject = {};
+          for (const group of names.slice(0, 32)) {
+            try {
+              result[group] = await client.proxyGroupLatencyTestAPI(
+                group,
+                "https://www.gstatic.com/generate_204",
+                5000,
+              );
+            } catch {
+              result[group] = { error: "Group test failed" };
+            }
+          }
+          return result;
+        }
         case "select":
         case "unfix":
         case "delay": {

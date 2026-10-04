@@ -238,4 +238,85 @@ describe("Unified router monitoring", () => {
     db.deleteBackend(backendId);
     expect(db.repos.monitor.ledger(backendId, "2026-09-01")).toBeNull();
   });
+  it("validates and isolates OpenClash commands, with acknowledgement and expiry", async () => {
+    const frame = {
+      ...payload(backendId),
+      snapshot: {
+        ...payload(backendId).snapshot,
+        openclash: { available: true, running: true },
+      },
+    };
+    await report(frame);
+    const run = (action: Record<string, unknown>, headers = {}) =>
+      app.inject({
+        method: "POST",
+        url: "/api/monitor/openclash",
+        headers,
+        payload: { backendId, ...action },
+      });
+    expect((await run({ action: "shell", value: "reboot" })).statusCode).toBe(
+      400,
+    );
+    expect(
+      (await run({ action: "setting", key: "oversea", value: "3" })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await run(
+          { action: "setting", key: "respect_rules", value: "1" },
+          { "sec-fetch-site": "cross-site" },
+        )
+      ).statusCode,
+    ).toBe(403);
+    const queued = await run({
+      action: "setting",
+      key: "respect_rules",
+      value: "1",
+    });
+    expect(queued.statusCode).toBe(200);
+    expect((await run({ action: "stop" })).statusCode).toBe(409);
+    expect(
+      (
+        await app.inject({
+          url: `/api/monitor/agent-settings?backendId=${backendId}`,
+        })
+      ).statusCode,
+    ).toBe(401);
+    const commands = (
+      await app.inject({
+        url: `/api/monitor/agent-settings?backendId=${backendId}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json();
+    expect(commands._openclash.id).toBe(queued.json().id);
+    const other = createTestBackend(db, "different router");
+    const otherToken = db.repos.monitor.createLink(other);
+    expect(
+      (
+        await app.inject({
+          url: `/api/monitor/agent-settings?backendId=${other}`,
+          headers: { authorization: `Bearer ${otherToken}` },
+        })
+      ).json()._openclash,
+    ).toBeNull();
+    await report({
+      ...frame,
+      sequence: 2,
+      snapshot: {
+        ...frame.snapshot,
+        openclash: { available: true, ack: { id: queued.json().id, ok: true } },
+      },
+    });
+    expect((await run({ action: "stop" })).statusCode).toBe(200);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 121000);
+    expect((await run({ action: "restart" })).statusCode).toBe(409);
+    expect(
+      (
+        await app.inject({
+          url: `/api/monitor/agent-settings?backendId=${backendId}`,
+          headers: { authorization: `Bearer ${token}` },
+        })
+      ).json()._openclash,
+    ).toBeNull();
+  });
 });

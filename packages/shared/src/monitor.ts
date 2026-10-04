@@ -13,6 +13,7 @@ export interface MonitorSnapshot {
   privacy: MonitorObject | null;
   nodes: MonitorObject | null;
   bandwidth: MonitorObject | null;
+  openclash?: MonitorObject | null;
 }
 export interface MonitorReport {
   protocolVersion: 1;
@@ -101,6 +102,7 @@ export function parseMonitorReport(
       privacy: section("privacy"),
       nodes: section("nodes"),
       bandwidth: section("bandwidth"),
+      openclash: section("openclash"),
     },
   };
 }

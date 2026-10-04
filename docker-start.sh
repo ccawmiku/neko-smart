@@ -9,9 +9,21 @@ API_PORT="${API_PORT:-3001}"
 COLLECTOR_WS_PORT="${COLLECTOR_WS_PORT:-3002}"
 DB_PATH="${DB_PATH:-/app/data/stats.db}"
 
+# Optional router profile: frequent writes use tmpfs; hourly verified backups use flash.
+PERSIST_DIR="${PERSIST_DIR:-/app/persist}"
+if [ "${RAM_DATABASE:-0}" = 1 ]; then
+    DB_PATH="/app/runtime/stats.db"
+    mkdir -p /app/runtime "$PERSIST_DIR"
+    export DB_PATH PERSIST_DIR
+    node /app/tools/runtime-db.mjs --restore
+    SECRET_DIR="$PERSIST_DIR"
+else
+    SECRET_DIR="$(dirname "$DB_PATH")"
+fi
+
 # Auto-generate COOKIE_SECRET if not set (persisted in data volume)
 if [ -z "$COOKIE_SECRET" ]; then
-  SECRET_FILE="$(dirname "$DB_PATH")/.cookie-secret"
+  SECRET_FILE="$SECRET_DIR/.cookie-secret"
   if [ -f "$SECRET_FILE" ]; then
     COOKIE_SECRET=$(cat "$SECRET_FILE")
   else
@@ -24,10 +36,10 @@ if [ -z "$COOKIE_SECRET" ]; then
   export COOKIE_SECRET
 fi
 
-export API_PORT COLLECTOR_WS_PORT DB_PATH
+export API_PORT COLLECTOR_WS_PORT DB_PATH PERSIST_DIR
 
 echo "╔════════════════════════════════════════════════════════╗"
-echo "║          Neko Master - Starting...                     ║"
+echo "║          neko-smart - Starting...                     ║"
 echo "╚════════════════════════════════════════════════════════╝"
 echo
 echo "📊 Web UI:     http://0.0.0.0:${WEB_PORT}"
@@ -56,7 +68,8 @@ mkdir -p "$(dirname "$DB_PATH")"
 
 # ─── Start collector ─────────────────────────────────────────────────
 echo "🚀 Starting data collector..."
-cd /app/apps/collector && node dist/index.js &
+cd /app/apps/collector
+node dist/index.js &
 COLLECTOR_PID=$!
 
 # Wait for API to be ready (up to 30 seconds)
@@ -76,9 +89,15 @@ if [ $RETRIES -eq $MAX_RETRIES ]; then
   echo "⚠️  API did not become ready in ${MAX_RETRIES}s, starting web anyway..."
 fi
 
+BACKUP_PID=""
+if [ "${RAM_DATABASE:-0}" = 1 ]; then
+    node /app/tools/runtime-db.mjs &
+    BACKUP_PID=$!
+fi
+
 # ─── Start web frontend ─────────────────────────────────────────────
 echo "🌐 Starting web frontend..."
-cd /app/apps/web/.next/standalone/apps/web && \
+cd /app/apps/web/.next/standalone/apps/web
   HOSTNAME=0.0.0.0 \
   NODE_ENV=production \
   PORT="${WEB_PORT}" \
@@ -118,6 +137,10 @@ cleanup() {
     kill $COLLECTOR_PID 2>/dev/null || true
     wait $WEB_PID 2>/dev/null || true
     wait $COLLECTOR_PID 2>/dev/null || true
+    if [ -n "$BACKUP_PID" ]; then
+        kill "$BACKUP_PID" 2>/dev/null || true
+        wait "$BACKUP_PID" 2>/dev/null || true
+    fi
     echo "👋 All services stopped."
     exit 0
 }
@@ -132,6 +155,10 @@ while true; do
     fi
     if ! kill -0 $WEB_PID 2>/dev/null; then
         echo "❌ Web frontend process (PID $WEB_PID) has died. Shutting down..."
+        cleanup
+    fi
+    if [ -n "$BACKUP_PID" ] && ! kill -0 "$BACKUP_PID" 2>/dev/null; then
+        echo "Database backup process stopped."
         cleanup
     fi
     sleep 5

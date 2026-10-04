@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { FastifyPluginAsync } from "fastify";
 import { parseMonitorReport, type MonitorObject } from "@neko-master/shared";
@@ -176,6 +177,112 @@ export function validateSettings(value: unknown): MonitorObject {
 
 export const monitorController: FastifyPluginAsync = async (app) => {
   const repo = app.db.repos.monitor;
+  // Commands are short-lived user actions. Keep one per router in RAM, never replay after restart.
+  const controls = new Map<
+    number,
+    {
+      id: string;
+      createdAt: number;
+      action: string;
+      value?: string;
+      key?: string;
+    }
+  >();
+  app.get("/openclash", async (request, reply) => {
+    try {
+      const backendId = id((request.query as { backendId?: string }).backendId);
+      const state = repo.read(backendId, Date.now(), Date.now());
+      const pending = controls.get(backendId);
+      const backend = app.db.getBackend(backendId);
+      let routerUrl = "";
+      try {
+        const url = new URL(backend?.url ?? "");
+        if (["http:", "https:"].includes(url.protocol)) {
+          url.username = "";
+          url.password = "";
+          url.port = "";
+          url.pathname = "/cgi-bin/luci/admin/services/openclash/modern";
+          url.search = "";
+          url.hash = "settings";
+          routerUrl = url.toString();
+        }
+      } catch {
+        /* backend has no router URL */
+      }
+      return {
+        routerUrl,
+        state: state.snapshot?.openclash ?? null,
+        receivedAt: state.receivedAt,
+        pending:
+          pending && Date.now() - pending.createdAt < 120000
+            ? pending.id
+            : null,
+      };
+    } catch {
+      return reply.code(400).send({ error: "Invalid backend ID" });
+    }
+  });
+  app.post("/openclash", async (request, reply) => {
+    if (
+      app.authService.isShowcaseMode() ||
+      request.headers["sec-fetch-site"] === "cross-site"
+    )
+      return reply.code(403).send({ error: "Forbidden" });
+    try {
+      const body = request.body as Record<string, unknown>;
+      const backendId = id(body.backendId);
+      const state = repo.read(backendId, Date.now(), Date.now());
+      if (
+        !state.snapshot?.openclash?.available ||
+        !state.receivedAt ||
+        Date.now() - state.receivedAt > 120000
+      )
+        return reply.code(409).send({ error: "Router control unavailable" });
+      const allowed: Record<string, string[]> = {
+        run_mode: ["", "-tun", "-mix"],
+        rule_mode: ["rule", "global", "direct"],
+        meta_sniffer: ["0", "1"],
+        respect_rules: ["0", "1"],
+        oversea: ["0", "1", "2"],
+        stream_unlock: ["0", "1"],
+      };
+      if (
+        !["start", "stop", "restart", "setting"].includes(String(body.action))
+      )
+        return reply.code(400).send({ error: "Invalid action" });
+      if (
+        body.action === "setting" &&
+        (typeof body.key !== "string" ||
+          !Object.hasOwn(allowed, body.key) ||
+          typeof body.value !== "string" ||
+          !allowed[body.key].includes(body.value))
+      )
+        return reply.code(400).send({ error: "Invalid setting" });
+      const previous = controls.get(backendId);
+      const ack = state.snapshot.openclash.ack;
+      if (
+        previous &&
+        Date.now() - previous.createdAt < 120000 &&
+        (!ack ||
+          typeof ack !== "object" ||
+          Array.isArray(ack) ||
+          ack.id !== previous.id)
+      )
+        return reply.code(409).send({ error: "An action is pending" });
+      const command = {
+        id: randomUUID(),
+        createdAt: Date.now(),
+        action: String(body.action),
+        ...(body.action === "setting"
+          ? { key: String(body.key), value: String(body.value) }
+          : {}),
+      };
+      controls.set(backendId, command);
+      return { queued: true, id: command.id, createdAt: command.createdAt };
+    } catch {
+      return reply.code(400).send({ error: "Invalid command" });
+    }
+  });
   const id = (raw: unknown): number => {
     if (!/^[1-9]\d*$/.test(String(raw)) || !Number.isSafeInteger(Number(raw)))
       throw new Error("Invalid backend ID");
@@ -208,7 +315,14 @@ export const monitorController: FastifyPluginAsync = async (app) => {
         )
       )
         return reply.code(401).send({ error: "Invalid monitor token" });
-      return { ...repo.settings(backendId), _command: repo.command(backendId) };
+      for (const [key, command] of controls)
+        if (Date.now() - command.createdAt > 120000 || !app.db.getBackend(key))
+          controls.delete(key);
+      return {
+        ...repo.settings(backendId),
+        _command: repo.command(backendId),
+        _openclash: controls.get(backendId) ?? null,
+      };
     } catch {
       return reply.code(400).send({ error: "Invalid backend ID" });
     }
@@ -256,11 +370,9 @@ export const monitorController: FastifyPluginAsync = async (app) => {
       repo.queueProbe(backendId, body.node);
       return { queued: true };
     } catch (error) {
-      return reply
-        .code(400)
-        .send({
-          error: error instanceof Error ? error.message : "Invalid probe",
-        });
+      return reply.code(400).send({
+        error: error instanceof Error ? error.message : "Invalid probe",
+      });
     }
   });
   app.get("/", async (request, reply) => {

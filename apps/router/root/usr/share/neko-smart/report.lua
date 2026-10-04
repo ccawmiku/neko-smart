@@ -2,6 +2,7 @@
 local fs,nixio,json,uci=require 'nixio.fs',require 'nixio',require 'luci.jsonc',require('luci.model.uci').cursor()
 local guard=dofile('/usr/share/neko-smart/privacy/guard.lua')
 local history=dofile('/usr/share/neko-smart/nodes/history.lua')
+local openclash=dofile('/usr/share/neko-smart/openclash.lua')
 local root='/var/run/neko-smart/'
 fs.mkdirr(root);fs.chmod(root,'700')
 local boot=(fs.readfile('/proc/sys/kernel/random/boot_id')or tostring(os.time())):gsub('[^%w_-]','')..'-'..tostring(nixio.getpid())
@@ -53,6 +54,8 @@ local function request(method,url,body)
 end
 local function apply_settings(data)
  if type(data)~='table' then return end
+ local control=data._openclash;data._openclash=nil
+ local control_changed=type(control)=='table'and openclash.apply(control)or false
  local command=data._command;data._command=nil
  if type(command)=='table'and type(command.id)=='string'and #command.id==36 and type(command.node)=='string'and #command.node<=256 and command.createdAt and math.abs(os.time()*1000-command.createdAt)<300000 then
   local ack=read(root..'probe-ack.json')or {};local db=read(root..'nodes/history.json',1024*1024)or {}
@@ -60,8 +63,8 @@ local function apply_settings(data)
    atomic(root..'nodes/probe',json.stringify({time=os.time(),node=command.node}));atomic(root..'probe-ack.json',json.stringify({id=command.id,time=os.time(),node=command.node}))
   end
  end
- if next(data)==nil then return end
- local encoded=json.stringify(data);if encoded==last_settings then return end
+ if next(data)==nil then return control_changed end
+ local encoded=json.stringify(data);if encoded==last_settings then return control_changed end
  if data.privacy then local error=guard.validate(data.privacy);if error then settings_error=error;return end end
  local rules={nodes={enabled={0,1},interval={30,3600},timeout={500,10000},max_nodes={1,64},keep_samples={30,360},persistent={0,1},targets='urls'},bandwidth={enabled={0,1},refresh_interval={10,3600},commit_interval={3600,604800},database_generations={1,24},database_interval={1,28},database_limit={0,65536},netlink_buffer_size={32768,4194304},database_prealloc={0,1},database_compress={0,1},local_network='networks'}}
  for section,values in pairs(data)do
@@ -89,6 +92,7 @@ local function apply_settings(data)
   end
  end
  if changed then uci:save('neko_smart');assert(uci:commit('neko_smart'));atomic(root..'settings-applied.json',json.stringify({time=os.time(),settings=data}));last_settings=encoded;settings_error=nil;os.execute('/etc/init.d/neko-smart reload >/dev/null 2>&1 &')else last_settings=encoded;settings_error=nil end
+ return control_changed
 end
 local pending=nil
 while true do
@@ -105,7 +109,7 @@ while true do
     nodes.probe_ack=read(root..'probe-ack.json')or json.null
     nodes.config={};for _,key in ipairs({'enabled','interval','timeout','max_nodes','keep_samples','persistent','targets'})do nodes.config[key]=uci:get('neko_smart','nodes',key)end
    end
-   pending={protocolVersion=1,backendId=backend,bootId=boot,sequence=sequence,observedAt=os.time()*1000,snapshot={privacy=privacy or json.null,nodes=nodes or json.null,bandwidth=bandwidth()}}
+   pending={protocolVersion=1,backendId=backend,bootId=boot,sequence=sequence,observedAt=os.time()*1000,snapshot={privacy=privacy or json.null,nodes=nodes or json.null,bandwidth=bandwidth(),openclash=openclash.status()}}
    pending.snapshot.bandwidth.config={};for _,key in ipairs({'enabled','refresh_interval','commit_interval','database_generations','database_interval','local_network','database_limit','database_prealloc','database_compress','netlink_buffer_size'})do pending.snapshot.bandwidth.config[key]=uci:get('neko_smart','bandwidth',key)end
    pending.snapshot.bandwidth.settings_error=settings_error or json.null
    pending.snapshot.bandwidth.settings_applied=read(root..'settings-applied.json')or json.null
@@ -117,5 +121,12 @@ while true do
  if not ok then atomic(root..'report-error',tostring(err):sub(1,256))end
  -- Only one pending frame is retried; bounded RAM, no flash spool or fake history.
  if pending and os.time()*1000-pending.observedAt>120000 then pending=nil;atomic(root..'report-gap',tostring(os.time()))end
- collectgarbage('collect');nixio.nanosleep(interval)
+ collectgarbage('collect')
+ -- Lightweight command polling; full traffic snapshots retain their normal cadence.
+ local until_time=nixio.sysinfo().uptime+interval
+ while nixio.sysinfo().uptime<until_time do
+  nixio.nanosleep(math.min(5,math.max(1,until_time-nixio.sysinfo().uptime)))
+  local desired=request('GET','/api/monitor/agent-settings?backendId='..tostring(backend))
+  if desired then local applied,control_changed=pcall(apply_settings,desired);if not applied then atomic(root..'report-error','settings-failed')elseif control_changed then break end end
+ end
 end

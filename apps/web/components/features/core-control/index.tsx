@@ -2,7 +2,16 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Server, Search, RefreshCw, Activity } from "lucide-react";
+import {
+  Server,
+  Search,
+  RefreshCw,
+  Activity,
+  Gauge,
+  ChevronDown,
+  RotateCcw,
+  ArrowDownUp,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { getCoreQueryKey } from "@/lib/stats-query-keys";
 import { Button } from "@/components/ui/button";
@@ -61,7 +70,11 @@ export function CoreControl({
   const qc = useQueryClient();
   const [pane, setPane] = useState<Pane>("proxies");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [level, setLevel] = useState("all");
   const [busy, setBusy] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [sortDelay, setSortDelay] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState("");
   const [confirm, setConfirm] = useState<Record<string, unknown> | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
@@ -145,6 +158,7 @@ export function CoreControl({
             size="sm"
             variant={p === pane ? "secondary" : "ghost"}
             onClick={() => {
+              setPage(0);
               setPane(p);
               setSearch("");
               setStatus("");
@@ -162,13 +176,26 @@ export function CoreControl({
             aria-label={t("search")}
             placeholder={t("search")}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(0);
+              setSearch(e.target.value);
+            }}
           />
         </div>
         <Button variant="outline" onClick={() => query.refetch()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           {t("refresh")}
         </Button>
+        {pane === "proxies" && (
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => act({ action: "delay-all" })}
+          >
+            <Gauge className="mr-2 h-4 w-4" />
+            {t("testAll")}
+          </Button>
+        )}
         {pane === "connections" && (
           <Button
             variant="outline"
@@ -208,86 +235,170 @@ export function CoreControl({
       ) : (
         <>
           {pane === "proxies" && (
-            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+            <div className="columns-1 gap-4 xl:columns-2">
               {groups.length === 0 && <p>{t("empty")}</p>}
               {groups.map(([name, value]) => {
                 const g = obj(value);
                 const all = Array.isArray(g.all)
                   ? g.all.filter((n): n is string => typeof n === "string")
                   : [];
+                const latency = (n: string) => {
+                  const d = rows(obj(proxies[n]).history).at(-1)?.delay;
+                  return typeof d === "number" && d > 0 ? d : null;
+                };
+                const visible = sortDelay[name]
+                  ? [...all].sort(
+                      (a, b) =>
+                        (latency(a) ?? Infinity) - (latency(b) ?? Infinity),
+                    )
+                  : all;
+                const tone = (d: number | null) =>
+                  d === null
+                    ? "bg-muted-foreground/25"
+                    : d < 200
+                      ? "bg-emerald-600 dark:bg-emerald-400"
+                      : d < 500
+                        ? "bg-amber-500 dark:bg-amber-400"
+                        : "bg-rose-600 dark:bg-rose-400";
                 return (
-                  <Card key={name} className="min-w-0">
-                    <CardHeader>
-                      <CardTitle className="break-all">{name}</CardTitle>
-                      <CardDescription>
-                        {text(g.type)} · {t("current")}:{" "}
-                        {text(g.now) || t("unknown")}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <select
-                        className="h-10 w-full min-w-0 rounded-md border bg-background px-3 text-sm"
-                        aria-label={name}
-                        disabled={busy || !all.length}
-                        value={text(g.now)}
-                        onChange={(e) =>
-                          act({ action: "select", name, proxy: e.target.value })
+                  <Card
+                    key={name}
+                    className="mb-4 min-w-0 break-inside-avoid overflow-hidden"
+                  >
+                    <CardHeader className="gap-3 pb-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="min-w-0 break-words text-base">
+                          {name}{" "}
+                          <Badge
+                            variant="secondary"
+                            className="ml-1 text-xs tabular-nums"
+                          >
+                            {all.filter((n) => latency(n) !== null).length} /{" "}
+                            {all.length}
+                          </Badge>
+                        </CardTitle>
+                        <div className="flex shrink-0 gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title={t("sortDelay")}
+                            aria-label={`${t("sortDelay")} ${name}`}
+                            onClick={() =>
+                              setSortDelay((v) => ({ ...v, [name]: !v[name] }))
+                            }
+                          >
+                            <ArrowDownUp className="h-4 w-4" />
+                          </Button>
+                          {!!g.fixed && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title={t("automatic")}
+                              aria-label={`${t("automatic")} ${name}`}
+                              disabled={busy}
+                              onClick={() => act({ action: "unfix", name })}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            title={t("test")}
+                            aria-label={`${t("test")} ${name}`}
+                            disabled={busy}
+                            onClick={() => act({ action: "delay-group", name })}
+                          >
+                            <Gauge
+                              className={`h-4 w-4 ${busy ? "animate-pulse" : ""}`}
+                            />
+                          </Button>
+                        </div>
+                      </div>
+                      <button
+                        className="flex min-w-0 items-center justify-between gap-2 text-left"
+                        aria-expanded={!collapsed[name]}
+                        onClick={() =>
+                          setCollapsed((v) => ({ ...v, [name]: !v[name] }))
                         }
                       >
-                        {all.map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                      {!!g.fixed && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => act({ action: "unfix", name })}
-                        >
-                          {t("automatic")}
-                        </Button>
-                      )}
-                      <div className="max-h-72 space-y-2 overflow-auto">
-                        {all.slice(0, 100).map((n) => {
-                          const node = obj(proxies[n]);
-                          const history = rows(node.history);
-                          const delay = history.at(-1)?.delay;
-                          return (
-                            <div
+                        <Badge className="max-w-full gap-2 whitespace-normal break-words">
+                          {text(g.type)} <span aria-hidden="true">›</span>{" "}
+                          {text(g.now) || t("unknown")}
+                        </Badge>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${collapsed[name] ? "" : "rotate-180"}`}
+                        />
+                      </button>
+                    </CardHeader>
+                    <CardContent className="pb-4">
+                      {collapsed[name] ? (
+                        <div className="flex flex-wrap gap-1.5 py-1">
+                          {all.map((n) => (
+                            <button
                               key={n}
-                              className="flex min-w-0 items-center gap-3 rounded-lg border p-2"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm" title={n}>
+                              title={`${n} · ${latency(n) ?? "—"} ms`}
+                              aria-label={`${t("selectNode")} ${n}`}
+                              disabled={busy}
+                              onClick={() =>
+                                act({ action: "select", name, proxy: n })
+                              }
+                              className={`h-3 w-3 rounded-full ${tone(latency(n))} ${n === g.now ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : ""}`}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
+                          {visible.map((n) => {
+                            const node = obj(proxies[n]);
+                            const history = rows(node.history).slice(-12);
+                            const d = latency(n);
+                            const selected = n === g.now;
+                            return (
+                              <button
+                                key={n}
+                                disabled={busy}
+                                aria-pressed={selected}
+                                onClick={() =>
+                                  act({ action: "select", name, proxy: n })
+                                }
+                                title={n}
+                                className={`min-w-0 rounded-xl border p-3 text-left transition-colors ${selected ? "border-primary bg-primary/15 ring-1 ring-primary" : "border-transparent bg-muted/65 hover:border-primary/40 hover:bg-muted"}`}
+                              >
+                                <p className="truncate text-sm font-semibold">
                                   {n}
                                 </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {text(node.type)} ·{" "}
-                                  {typeof delay === "number" && delay > 0
-                                    ? `${delay} ms`
-                                    : t("unknown")}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={busy}
-                                onClick={() =>
-                                  act({ action: "delay", name: n })
-                                }
-                              >
-                                {t("test")}
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {t("groupLimit")}
-                      </p>
+                                <div className="mt-2 flex items-center justify-between gap-1">
+                                  <span className="truncate text-xs text-muted-foreground">
+                                    {text(node.type)}
+                                  </span>
+                                  <span
+                                    className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${d === null ? "bg-muted text-muted-foreground" : d < 200 ? "bg-emerald-600/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-400" : d < 500 ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-rose-600/10 text-rose-700 dark:text-rose-400"}`}
+                                  >
+                                    {d ?? "—"}
+                                  </span>
+                                </div>
+                                <div className="mt-3 flex h-1.5 gap-px overflow-hidden rounded-full">
+                                  {history.length ? (
+                                    history.map((h, i) => (
+                                      <span
+                                        key={i}
+                                        className={`min-w-0 flex-1 ${tone(typeof h.delay === "number" && h.delay > 0 ? h.delay : null)}`}
+                                        title={`${text(h.time)} · ${h.delay ?? "—"} ms`}
+                                      />
+                                    ))
+                                  ) : (
+                                    <span className="w-full bg-muted-foreground/20" />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );
@@ -312,93 +423,190 @@ export function CoreControl({
                   </Card>
                 ))}
               </div>
-              <Card>
-                <CardContent className="max-h-[650px] space-y-3 overflow-auto">
-                  {connections.length === 0 && <p>{t("empty")}</p>}
-                  {connections.slice(0, 200).map((c) => {
-                    const m = obj(c.metadata);
-                    return (
-                      <div
-                        key={text(c.id)}
-                        className="flex flex-wrap items-center gap-3 rounded-xl border p-3"
-                      >
-                        <button
-                          className="min-w-0 flex-1 text-left"
-                          onClick={() => setDetail(c)}
-                        >
-                          <p className="break-all text-sm font-medium">
-                            {text(m.host) || text(m.destinationIP)}:
-                            {text(m.destinationPort)}
-                          </p>
-                          <p className="mt-1 break-all text-xs text-muted-foreground">
-                            {text(m.sourceIP)} · {text(m.network)} ·{" "}
-                            {Array.isArray(c.chains)
-                              ? c.chains.join(" → ")
-                              : ""}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            ↓ {bytes(c.download)} · ↑ {bytes(c.upload)} ·{" "}
-                            {text(c.rule)}
-                          </p>
-                        </button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() =>
-                            setConfirm({ action: "close", name: c.id })
-                          }
-                        >
-                          {t("close")}
-                        </Button>
-                      </div>
-                    );
-                  })}
-                  <p className="text-xs text-muted-foreground">
-                    {t("recordLimit")}
+              <Card className="overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted text-muted-foreground">
+                      <tr>
+                        {[
+                          "destination",
+                          "source",
+                          "network",
+                          "chains",
+                          "download",
+                          "upload",
+                          "rules",
+                          "actions",
+                        ].map((k) => (
+                          <th
+                            key={k}
+                            className="whitespace-nowrap px-4 py-3 font-medium"
+                          >
+                            {t(k)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {connections
+                        .slice(page * 50, (page + 1) * 50)
+                        .map((c) => {
+                          const m = obj(c.metadata);
+                          return (
+                            <tr
+                              key={text(c.id)}
+                              className="border-t hover:bg-muted/40"
+                            >
+                              <td className="max-w-64 truncate px-4 py-3">
+                                <button
+                                  className="font-medium hover:text-primary"
+                                  onClick={() => setDetail(c)}
+                                >
+                                  {text(m.host) || text(m.destinationIP)}:
+                                  {text(m.destinationPort)}
+                                </button>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3">
+                                {text(m.sourceIP)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <Badge variant="secondary">
+                                  {text(m.network)}
+                                </Badge>
+                              </td>
+                              <td
+                                className="max-w-60 truncate px-4 py-3"
+                                title={
+                                  Array.isArray(c.chains)
+                                    ? c.chains.join(" → ")
+                                    : ""
+                                }
+                              >
+                                {Array.isArray(c.chains)
+                                  ? c.chains.join(" → ")
+                                  : ""}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                                {bytes(c.download)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                                {bytes(c.upload)}
+                              </td>
+                              <td className="px-4 py-3">{text(c.rule)}</td>
+                              <td className="px-4 py-2">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  disabled={busy}
+                                  aria-label={`${t("close")} ${text(c.id)}`}
+                                  title={t("close")}
+                                  onClick={() =>
+                                    setConfirm({ action: "close", name: c.id })
+                                  }
+                                >
+                                  <span aria-hidden="true">×</span>
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+                {!connections.length && (
+                  <p className="p-6 text-sm text-muted-foreground">
+                    {t("empty")}
                   </p>
-                </CardContent>
+                )}
               </Card>
             </>
           )}
           {pane === "rules" && (
-            <Card>
-              <CardContent className="max-h-[700px] space-y-3 overflow-auto">
-                {rules.length === 0 && <p>{t("empty")}</p>}
-                {rules.slice(0, 200).map((r, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 rounded-xl border p-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="break-all text-sm font-medium">
-                        {text(r.type)} · {text(r.payload) || "*"}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        → {text(r.proxy)}
-                      </p>
-                    </div>
-                    {typeof obj(r.extra).disabled === "boolean" && (
-                      <Switch
-                        aria-label={`${t("enabled")} ${i}`}
-                        checked={!obj(r.extra).disabled}
-                        disabled={busy}
-                        onCheckedChange={(v) =>
-                          act({
-                            action: "rule-toggle",
-                            index: r.index,
-                            disabled: !v,
-                          })
-                        }
-                      />
-                    )}
-                  </div>
-                ))}
-                <p className="text-xs text-muted-foreground">
-                  {t("recordLimit")}
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted text-muted-foreground">
+                    <tr>
+                      {["ruleType", "ruleContent", "policy", "enabled"].map(
+                        (k) => (
+                          <th key={k} className="px-4 py-3 text-xs font-medium">
+                            {t(k)}
+                          </th>
+                        ),
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rules.slice(page * 50, (page + 1) * 50).map((r, i) => (
+                      <tr key={i} className="border-t hover:bg-muted/40">
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <Badge variant="secondary">{text(r.type)}</Badge>
+                        </td>
+                        <td className="max-w-md break-all px-4 py-3 font-mono text-xs">
+                          {text(r.payload) || "*"}
+                        </td>
+                        <td className="px-4 py-3">{text(r.proxy)}</td>
+                        <td className="px-4 py-3">
+                          {typeof obj(r.extra).disabled === "boolean" && (
+                            <Switch
+                              aria-label={`${t("enabled")} ${r.index}`}
+                              checked={!obj(r.extra).disabled}
+                              disabled={busy}
+                              onCheckedChange={(v) =>
+                                act({
+                                  action: "rule-toggle",
+                                  index: r.index,
+                                  disabled: !v,
+                                })
+                              }
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!rules.length && (
+                <p className="p-6 text-sm text-muted-foreground">
+                  {t("empty")}
                 </p>
-              </CardContent>
+              )}
             </Card>
+          )}
+          {(pane === "connections" || pane === "rules") && (
+            <div className="flex items-center justify-end gap-3 text-xs text-muted-foreground">
+              <span>
+                {t("pagination", {
+                  page: page + 1,
+                  total: Math.max(
+                    1,
+                    Math.ceil(
+                      (pane === "rules" ? rules : connections).length / 50,
+                    ),
+                  ),
+                })}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page === 0}
+                onClick={() => setPage((v) => v - 1)}
+              >
+                {t("previous")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  (page + 1) * 50 >=
+                  (pane === "rules" ? rules : connections).length
+                }
+                onClick={() => setPage((v) => v + 1)}
+              >
+                {t("next")}
+              </Button>
+            </div>
           )}
           {pane === "providers" && (
             <div className="grid gap-4 lg:grid-cols-2">
@@ -425,7 +633,9 @@ export function CoreControl({
                     return (
                       <Card key={kind + name} className="min-w-0">
                         <CardHeader>
-                          <CardTitle className="break-all">{name}</CardTitle>
+                          <CardTitle className="break-all text-base">
+                            {name}
+                          </CardTitle>
                           <CardDescription>
                             {t(kind)} · {text(provider.vehicleType)}
                           </CardDescription>
@@ -468,21 +678,38 @@ export function CoreControl({
           {pane === "logs" && (
             <Card>
               <CardHeader>
-                <CardTitle>{t("logs")}</CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-base">{t("logs")}</CardTitle>
+                  <div className="flex flex-wrap gap-1">
+                    {["all", "info", "warning", "error", "debug"].map((l) => (
+                      <Button
+                        key={l}
+                        size="sm"
+                        variant={level === l ? "secondary" : "ghost"}
+                        onClick={() => setLevel(l)}
+                      >
+                        {t(l)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
                 <CardDescription>{t("logsHint")}</CardDescription>
               </CardHeader>
-              <CardContent className="max-h-[600px] space-y-2 overflow-auto">
+              <CardContent className="max-h-[600px] space-y-0 overflow-auto rounded-b-xl bg-muted/40 font-mono">
                 {rows(data.rows).filter(matches).length === 0 && (
                   <p>{t("empty")}</p>
                 )}
                 {rows(data.rows)
                   .filter(matches)
+                  .filter((r) => level === "all" || r.level === level)
                   .map((r) => (
                     <div
                       key={Number(r.seq)}
-                      className="rounded-lg bg-muted p-3 font-mono text-xs"
+                      className="border-b border-border/50 py-2 text-xs"
                     >
-                      <span className="text-muted-foreground">
+                      <span
+                        className={`text-muted-foreground ${r.level === "error" ? "text-destructive" : r.level === "warning" ? "text-amber-700 dark:text-amber-400" : ""}`}
+                      >
                         {new Date(Number(r.time)).toLocaleTimeString()} ·{" "}
                         {text(r.level)}
                       </span>
@@ -498,7 +725,7 @@ export function CoreControl({
                 <CardTitle>{t("config")}</CardTitle>
                 <CardDescription>{t("runtimeHint")}</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="grid gap-6 sm:grid-cols-2">
                 {["mode", "log-level"].map((key) => (
                   <label key={key} className="block space-y-2">
                     <span className="text-sm font-medium">{t(key)}</span>
@@ -527,7 +754,7 @@ export function CoreControl({
                 {["ipv6", "allow-lan"].map((key) => (
                   <div
                     key={key}
-                    className="flex items-center justify-between gap-4"
+                    className="flex items-center justify-between gap-4 rounded-xl bg-muted/50 p-4"
                   >
                     <span className="text-sm">{t(key)}</span>
                     <Switch

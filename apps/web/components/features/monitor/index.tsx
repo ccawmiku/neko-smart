@@ -22,6 +22,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  ReferenceLine,
 } from "recharts";
 import type {
   MonitorJson,
@@ -186,18 +187,32 @@ function Stat({
   label,
   value,
   hint,
+  status,
 }: {
   label: string;
   value: string | number;
   hint?: string;
+  status?: "good" | "warning" | "unknown";
 }) {
   return (
     <Card>
       <CardContent className="pt-5">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
-          {value}
-        </p>
+        {status ? (
+          <div className="mt-3 flex items-center gap-3">
+            <ShieldCheck
+              className={`h-9 w-9 ${status === "good" ? "text-emerald-600 dark:text-emerald-400" : status === "warning" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}
+            />
+            <p className="text-sm font-medium">{value}</p>
+            <span
+              className={`ml-auto h-2.5 w-2.5 rounded-full ${status === "good" ? "bg-emerald-600 dark:bg-emerald-400" : status === "warning" ? "bg-amber-600 dark:bg-amber-400" : "bg-muted-foreground"}`}
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+            {value}
+          </p>
+        )}
         {hint && <p className="mt-2 text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
@@ -206,7 +221,9 @@ function Stat({
 function Plot({
   points,
   keys,
+  events = [],
 }: {
+  events?: { time: number; up: boolean }[];
   points: Record<string, number | null>[];
   keys: { key: string; label: string; color: string }[];
 }) {
@@ -231,6 +248,8 @@ function Plot({
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis
             dataKey="time"
+            type="number"
+            domain={["dataMin", "dataMax"]}
             tickFormatter={(v) =>
               new Date(Number(v)).toLocaleTimeString([], {
                 hour: "2-digit",
@@ -250,6 +269,27 @@ function Plot({
               borderRadius: 12,
             }}
           />
+          {events
+            .filter(
+              (e) =>
+                e.time >= Number(points[0]?.time) &&
+                e.time <= Number(points.at(-1)?.time),
+            )
+            .slice(-12)
+            .map((e, i) => (
+              <ReferenceLine
+                key={i}
+                x={e.time}
+                stroke={e.up ? "var(--chart-2)" : "var(--destructive)"}
+                strokeDasharray="3 3"
+                label={{
+                  value: t(e.up ? "recovered" : "failedEvent"),
+                  position: "insideTop",
+                  fill: "currentColor",
+                  fontSize: 10,
+                }}
+              />
+            ))}
           {keys.map((k) => (
             <Area
               key={k.key}
@@ -367,7 +407,22 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
               ? "operational"
               : "unconfirmed",
           )}
-          hint={str(obj(dns.route).path) || t("unknown")}
+          status={
+            !fresh
+              ? "unknown"
+              : dns.enabled === true &&
+                  obj(dns.health).available === true &&
+                  dns.firewall_installed === true
+                ? "good"
+                : "warning"
+          }
+          hint={t(
+            str(obj(dns.route).path) === "native-fake-ip"
+              ? "dnsRouteNative"
+              : str(obj(dns.route).path) === "independent"
+                ? "dnsRouteIndependent"
+                : "dnsRouteOther",
+          )}
         />
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -801,7 +856,7 @@ function Nodes({
                 </span>
               </div>
               <CardDescription>
-                {t("observed")} · {stamp(num(node.checked) * 1000)}
+                {t("testedAt")} · {stamp(num(node.checked) * 1000)}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -825,6 +880,13 @@ function Nodes({
               </p>
               <Plot
                 points={points}
+                events={arr(node.events).map((e) => {
+                  const event = obj(e);
+                  return {
+                    time: num(event.time) * 1000,
+                    up: event.to === "up",
+                  };
+                })}
                 keys={[{ key: "delay", label: t("latency"), color }]}
               />
               <div className="flex gap-2">
@@ -863,29 +925,6 @@ function Nodes({
               <p className="mt-3 text-xs text-muted-foreground">
                 {t("availabilityHint")}
               </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("events")}</CardTitle>
-            </CardHeader>
-            <CardContent className="max-h-72 space-y-4 overflow-auto">
-              {arr(node.events)
-                .slice()
-                .reverse()
-                .map((e, i) => {
-                  const event = obj(e);
-                  return (
-                    <div key={i} className="border-l-2 border-primary/30 pl-4">
-                      <p className="text-sm">
-                        {str(event.from)} → {str(event.to)}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {stamp(num(event.time) * 1000)} · {str(event.reason)}
-                      </p>
-                    </div>
-                  );
-                })}
             </CardContent>
           </Card>
         </div>

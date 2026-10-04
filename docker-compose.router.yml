@@ -1,0 +1,31 @@
+# Router centre. DNS/capture/accounting remain native OpenWrt services.
+services:
+  neko-smart:
+    image: ghcr.io/ccawmiku/neko-smart:latest
+    container_name: neko-smart
+    restart: unless-stopped
+    network_mode: host
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.5
+    pids_limit: 128
+    stop_grace_period: 60s
+    environment:
+      WEB_PORT: "18082"
+      API_PORT: "3001"
+      COLLECTOR_WS_PORT: "3002"
+      RAM_DATABASE: "1"
+      DB_BACKUP_INTERVAL: "3600"
+      GEOIP_ALLOW_ONLINE: "0"
+      FORCE_ACCESS_CONTROL_OFF: "true"
+      NODE_OPTIONS: "--max-old-space-size=160"
+    volumes:
+      - /overlay/neko-smart-center:/app/persist
+    tmpfs:
+      - /app/runtime:size=128m,mode=0700
+      - /tmp:size=32m,mode=1777
+    logging:
+      driver: "local"
+      options:
+        max-size: "1m"
+        max-file: "2"

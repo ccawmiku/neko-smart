@@ -2,3 +2,5 @@
 *.lua text eol=lf
 apps/router/Makefile text eol=lf
 apps/router/root/etc/** text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
