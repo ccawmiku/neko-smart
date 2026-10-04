@@ -1,4 +1,5 @@
 "use client";
+import { CoreControl } from "@/components/features/core-control";
 
 import { MonitorContent } from "@/components/features/monitor";
 import { useState, memo } from "react";
@@ -332,6 +333,7 @@ export function Content({
 }: ContentProps) {
   const renderContent = () => {
     switch (activeTab) {
+      case "core-control": return <CoreControl key={activeBackendId} backendId={activeBackendId} autoRefresh={autoRefresh} onNavigate={onNavigate}/>;
       case "privacy":
       case "node-monitor":
       case "bandwidth":

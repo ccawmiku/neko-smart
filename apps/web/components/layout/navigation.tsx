@@ -50,6 +50,7 @@ const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
 
 const NAV_ITEMS = [
   { id: "overview", icon: LayoutDashboard },
+  { id: "core-control", icon: Server },
   { id: "privacy", icon: ShieldCheck },
   { id: "node-monitor", icon: Activity },
   { id: "bandwidth", icon: Gauge },

@@ -1,3 +1,4 @@
+import { coreControlController } from "../core-control/core-control.controller.js";
 import { monitorController } from '../monitor/monitor.controller.js';
 /**
  * Main Fastify Application
@@ -1382,6 +1383,7 @@ export async function createApp(options: AppOptions) {
   await app.register(authController, { prefix: '/api/auth' });
   await app.register(configController, { prefix: '/api/db' });
   await app.register(monitorController, { prefix: '/api/monitor' });
+  await app.register(coreControlController, { prefix: '/api/core-control' });
 
   if (autoListen) {
     // Start server

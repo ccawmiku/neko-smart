@@ -13,6 +13,7 @@ export type TimePreset =
 export type BackendStatus = "healthy" | "unhealthy" | "unknown";
 
 export type TabId =
+  | "core-control"
   | "privacy"
   | "node-monitor"
   | "bandwidth"

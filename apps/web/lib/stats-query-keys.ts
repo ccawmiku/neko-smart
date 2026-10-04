@@ -340,3 +340,5 @@ export function getMonitorQueryKey(backendId?: number, range?: TimeRange) {
 export function getMonitorPeriodQueryKey(backendId: number, period: string) {
   return ["monitor-period", { backendId, period }] as const;
 }
+
+export const getCoreQueryKey = (backendId?: number, resource?: string) => ["core-control", backendId ?? null, resource ?? null] as const;

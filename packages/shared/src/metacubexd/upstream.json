@@ -1,0 +1,22 @@
+{
+  "repository": "https://github.com/MetaCubeX/metacubexd",
+  "commit": "8bbc8f58fef71148a94fb5c0ff808f79b057337d",
+  "version": "1.273.1",
+  "source": "packages/ui/composables/useApi.ts",
+  "sha256": "6f96f906f768fa1ee405c7a9cff2eccddf485d8d250449a02cfc5b5e4476cffd",
+  "functions": [
+    "fetchProxyProvidersAPI",
+    "fetchProxiesAPI",
+    "updateProxyProviderAPI",
+    "proxyProviderHealthCheckAPI",
+    "selectProxyInGroupAPI",
+    "unfixProxyInGroupAPI",
+    "proxyLatencyTestAPI",
+    "proxyGroupLatencyTestAPI",
+    "fetchRulesAPI",
+    "fetchRuleProvidersAPI",
+    "updateRuleProviderAPI",
+    "toggleRuleDisabledAPI"
+  ],
+  "adaptation": "Explicit RequestTransport; type aliases are framework-independent; unchanged endpoint/timeout behavior."
+}

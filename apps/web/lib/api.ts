@@ -235,6 +235,8 @@ function buildUrl(base: string, params: Record<string, string | number | undefin
 }
 
 export const api = {
+  coreResource: (backendId: number, resource: string) => fetchJson<Record<string, unknown>>(`${API_BASE}/core-control/${backendId}/${resource}`),
+  coreAction: (backendId: number, action: Record<string, unknown>) => fetchJson<{result: unknown}>(`${API_BASE}/core-control/${backendId}/actions`, 'POST', action),
   probeMonitorNode: (backendId: number, node: string) => fetchJson<{queued:boolean}>(`${API_BASE}/monitor/probe`,'POST',{backendId,node}),
   getBandwidthPeriod: (backendId: number, period: string) => fetchJson<MonitorObject>(buildUrl(`${API_BASE}/monitor/bandwidth`, {backendId,period})),
   getMonitor: (backendId?: number, range?: TimeRange) => fetchJson<MonitorState>(buildUrl(`${API_BASE}/monitor/`, {backendId,start:range?.start,end:range?.end})),

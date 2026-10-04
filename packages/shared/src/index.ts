@@ -321,3 +321,6 @@ export * from './gateway-utils.js';
 export * from './geo-ip-utils.js';
 
 export * from './monitor.js';
+
+export { createMetaCubeClient } from "./metacubexd/client.js";
+export type { RequestTransport, RequestOptions, RequestResult } from "./metacubexd/client.js";
