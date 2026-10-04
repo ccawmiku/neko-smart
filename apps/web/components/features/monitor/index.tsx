@@ -1205,7 +1205,9 @@ function Bandwidth({
     if (str(row.ip)) old.ips.add(str(row.ip));
     devices.set(id, old);
   }
-  const rows = [...devices.values()].sort((a, b) => b.rx + b.tx - a.rx - a.tx);
+  const rows = [...devices.entries()]
+    .map(([id, value]) => ({ id, ...value }))
+    .sort((a, b) => b.rx + b.tx - a.rx - a.tx);
   const history = state.history.map((r) => {
     const bw = obj(r.summary.bandwidth);
     const i = obj(arr(bw.interfaces)[0]);
@@ -1365,7 +1367,7 @@ function Bandwidth({
                   </tr>
                 )}
                 {rows.map((row) => (
-                  <tr key={row.name} className="border-t border-border">
+                  <tr key={row.id} className="border-t border-border">
                     <td className="p-3 font-medium">{row.name}</td>
                     <td className="p-3 text-xs text-muted-foreground">
                       {[...row.ips].join(" · ")}
