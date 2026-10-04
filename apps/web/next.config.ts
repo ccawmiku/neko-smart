@@ -22,9 +22,11 @@ const API_DESTINATION = apiUrl.endsWith('/api')
 // Base Next.js config
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: { cpus: 1, webpackMemoryOptimizations: true },
   output: 'standalone',
   outputFileTracingRoot: join(__dirname, '../..'),
   env: {
+    NEXT_PUBLIC_GITHUB_REPO: "ccawmiku/neko-smart",
     NEXT_PUBLIC_APP_VERSION: rootPkg.version || "0.0.0",
     // NOTE: NEXT_PUBLIC_WS_PORT is a build-time variable baked into the JS bundle.
     // At runtime (e.g. Docker), use WS_EXTERNAL_PORT env var instead — it is written

@@ -255,6 +255,8 @@ export class GeoIPService {
     ip: string,
     config: GeoLookupConfig,
   ): Promise<GeoLocation | null> {
+    // Fail closed for target-IP privacy; explicit opt-in is required for external lookups.
+    if (process.env.GEOIP_ALLOW_ONLINE !== '1') return null;
     const lookupUrl = this.buildLookupUrl(config.onlineApiUrl, ip);
 
     try {

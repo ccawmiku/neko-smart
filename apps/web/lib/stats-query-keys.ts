@@ -26,7 +26,11 @@ export function getSummaryQueryKey(backendId?: number, range?: TimeRange) {
   ] as const;
 }
 
-export function getCountriesQueryKey(backendId?: number, limit = 50, range?: TimeRange) {
+export function getCountriesQueryKey(
+  backendId?: number,
+  limit = 50,
+  range?: TimeRange,
+) {
   return [
     "stats",
     "countries",
@@ -38,7 +42,11 @@ export function getCountriesQueryKey(backendId?: number, limit = 50, range?: Tim
   ] as const;
 }
 
-export function getDevicesQueryKey(backendId?: number, limit = 50, range?: TimeRange) {
+export function getDevicesQueryKey(
+  backendId?: number,
+  limit = 50,
+  range?: TimeRange,
+) {
   return [
     "stats",
     "devices",
@@ -50,7 +58,11 @@ export function getDevicesQueryKey(backendId?: number, limit = 50, range?: TimeR
   ] as const;
 }
 
-export function getProxiesQueryKey(backendId?: number, limit = 50, range?: TimeRange) {
+export function getProxiesQueryKey(
+  backendId?: number,
+  limit = 50,
+  range?: TimeRange,
+) {
   return [
     "stats",
     "proxies",
@@ -62,7 +74,11 @@ export function getProxiesQueryKey(backendId?: number, limit = 50, range?: TimeR
   ] as const;
 }
 
-export function getRulesQueryKey(backendId?: number, limit = 50, range?: TimeRange) {
+export function getRulesQueryKey(
+  backendId?: number,
+  limit = 50,
+  range?: TimeRange,
+) {
   return [
     "stats",
     "rules",
@@ -312,4 +328,15 @@ export function getRuleIPsQueryKey(
       ...normalizeRange(range),
     },
   ] as const;
+}
+
+export function getMonitorQueryKey(backendId?: number, range?: TimeRange) {
+  return [
+    "monitor",
+    { backendId: backendId ?? null, ...normalizeRange(range) },
+  ] as const;
+}
+
+export function getMonitorPeriodQueryKey(backendId: number, period: string) {
+  return ["monitor-period", { backendId, period }] as const;
 }

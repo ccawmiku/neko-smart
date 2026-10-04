@@ -209,6 +209,7 @@ export class BackendRepository {
       this.db.prepare(`DELETE FROM device_domain_stats WHERE backend_id = ?`).run(id);
       this.db.prepare(`DELETE FROM device_ip_stats WHERE backend_id = ?`).run(id);
       this.db.prepare(`DELETE FROM backend_health_logs WHERE backend_id = ?`).run(id);
+      for (const table of ['monitor_links', 'monitor_latest', 'monitor_history', 'monitor_ledgers', 'monitor_commands']) this.db.prepare(`DELETE FROM ${table} WHERE backend_id=?`).run(id);
       this.db.prepare(`DELETE FROM surge_policy_cache WHERE backend_id = ?`).run(id);
       this.db.prepare(`DELETE FROM agent_heartbeats WHERE backend_id = ?`).run(id);
       this.db.prepare(`DELETE FROM agent_snapshots WHERE backend_id = ?`).run(id);

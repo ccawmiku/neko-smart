@@ -529,6 +529,19 @@ export const DEFAULT_AUTH_CONFIG = `
     ('token_hash', '');
 `;
 
+// Router monitoring is SQLite control/health data, including in ClickHouse-only traffic mode.
+export const MONITOR_SCHEMA = `
+CREATE TABLE IF NOT EXISTS monitor_links (backend_id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS monitor_latest (backend_id INTEGER PRIMARY KEY, boot_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+ observed_at INTEGER NOT NULL, received_at INTEGER NOT NULL, snapshot TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS monitor_history (backend_id INTEGER NOT NULL, minute INTEGER NOT NULL, observed_at INTEGER NOT NULL,
+ summary TEXT NOT NULL, PRIMARY KEY (backend_id, minute));
+CREATE INDEX IF NOT EXISTS idx_monitor_history_time ON monitor_history(minute);
+CREATE TABLE IF NOT EXISTS monitor_ledgers (backend_id INTEGER NOT NULL, period TEXT NOT NULL, observed_at INTEGER NOT NULL,
+ snapshot TEXT NOT NULL, PRIMARY KEY (backend_id,period));
+CREATE TABLE IF NOT EXISTS monitor_commands (backend_id INTEGER PRIMARY KEY,id TEXT NOT NULL,node TEXT NOT NULL,created_at INTEGER NOT NULL);
+`;
+
 // Get all schema creation statements in order
 export function getAllSchemaStatements(): string[] {
   return [
@@ -565,5 +578,6 @@ export function getAllSchemaStatements(): string[] {
     ...INDEXES,
     DEFAULT_APP_CONFIG,
     DEFAULT_AUTH_CONFIG,
+    MONITOR_SCHEMA,
   ];
 }

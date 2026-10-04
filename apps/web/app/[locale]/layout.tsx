@@ -24,7 +24,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Neko Master",
+  title: "neko-smart",
   description: "Modern traffic analytics for edge gateways",
   icons: {
     icon: "/logo.png",
@@ -34,9 +34,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Neko Master",
+    title: "neko-smart",
   },
-  applicationName: "Neko Master",
+  applicationName: "neko-smart",
 };
 
 export const viewport: Viewport = {
@@ -76,7 +76,7 @@ export default async function RootLayout({
           name="apple-mobile-web-app-status-bar-style"
           content="black-translucent"
         />
-        <meta name="apple-mobile-web-app-title" content="Neko Master" />
+        <meta name="apple-mobile-web-app-title" content="neko-smart" />
         {/*
           Load runtime config (real external ports/URLs written by
           docker-start.sh) BEFORE the app bundle, so the WebSocket client reads

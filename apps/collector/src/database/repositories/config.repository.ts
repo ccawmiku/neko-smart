@@ -204,6 +204,16 @@ export class ConfigRepository extends BaseRepository {
     deletedConnections: number; deletedLogs: number; deletedDomains: number;
     deletedIPs: number; deletedProxies: number; deletedRules: number;
   } {
+    if (days === 0) {
+      for (const table of ['monitor_latest', 'monitor_history', 'monitor_ledgers', 'monitor_commands']) {
+        if (backendId !== null) this.db.prepare(`DELETE FROM ${table} WHERE backend_id=?`).run(backendId);
+        else this.db.prepare(`DELETE FROM ${table}`).run();
+      }
+    } else {
+      const cutoff = Date.now() - days * 86400000;
+      if (backendId !== null) this.db.prepare('DELETE FROM monitor_history WHERE backend_id=? AND minute<?').run(backendId, cutoff);
+      else this.db.prepare('DELETE FROM monitor_history WHERE minute<?').run(cutoff);
+    }
     let deletedConnections: number;
     let deletedLogs: number;
     let deletedDomains = 0;

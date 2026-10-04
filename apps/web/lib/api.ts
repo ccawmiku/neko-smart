@@ -1,3 +1,4 @@
+import type { MonitorState, MonitorObject } from '@neko-master/shared';
 import type {
   StatsSummary,
   DomainStats,
@@ -234,6 +235,11 @@ function buildUrl(base: string, params: Record<string, string | number | undefin
 }
 
 export const api = {
+  probeMonitorNode: (backendId: number, node: string) => fetchJson<{queued:boolean}>(`${API_BASE}/monitor/probe`,'POST',{backendId,node}),
+  getBandwidthPeriod: (backendId: number, period: string) => fetchJson<MonitorObject>(buildUrl(`${API_BASE}/monitor/bandwidth`, {backendId,period})),
+  getMonitor: (backendId?: number, range?: TimeRange) => fetchJson<MonitorState>(buildUrl(`${API_BASE}/monitor/`, {backendId,start:range?.start,end:range?.end})),
+  linkMonitor: (backendId: number) => fetchJson<{token:string}>(`${API_BASE}/monitor/link`, 'POST', {backendId}),
+  saveMonitorSettings: (backendId: number, settings: MonitorObject) => fetchJson<{saved:boolean}>(`${API_BASE}/monitor/settings`, 'PUT', {backendId,settings}),
   // Stats APIs with optional backendId parameter
   getSummary: (backendId?: number, range?: TimeRange) => 
     fetchJson<StatsSummary & { backend: { id: number; name: string; isActive: boolean; listening: boolean } }>(

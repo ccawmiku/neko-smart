@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
 import {
+  Activity,
+  ShieldCheck,
+  Gauge,
   LayoutDashboard,
   Globe,
   MapPin,
@@ -42,11 +45,15 @@ interface NavigationProps {
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0";
 const GITHUB_REPO =
-  process.env.NEXT_PUBLIC_GITHUB_REPO || "foru17/neko-master";
+  process.env.NEXT_PUBLIC_GITHUB_REPO || "ccawmiku/neko-smart";
 const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
 
 const NAV_ITEMS = [
   { id: "overview", icon: LayoutDashboard },
+  { id: "privacy", icon: ShieldCheck },
+  { id: "node-monitor", icon: Activity },
+  { id: "bandwidth", icon: Gauge },
+  { id: "monitor-settings", icon: Settings },
   { id: "rules", icon: Route },
   { id: "domains", icon: Globe },
   { id: "countries", icon: MapPin },
@@ -112,7 +119,7 @@ export function Navigation({
           <div className="w-14 h-14 rounded-xl shrink-0 flex items-center justify-center overflow-hidden hover:opacity-80">
             <Image
               src="/logo.png"
-              alt="Neko Master"
+              alt="neko-smart"
               width={40}
               height={40}
               className="w-full h-full object-cover"
@@ -338,7 +345,7 @@ export function Navigation({
                 <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center overflow-hidden shrink-0">
                   <Image
                     src="/logo.png"
-                    alt="Neko Master"
+                    alt="neko-smart"
                     width={64}
                     height={64}
                     className="w-full h-full object-cover"

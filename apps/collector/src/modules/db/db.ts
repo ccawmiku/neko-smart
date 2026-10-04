@@ -1,3 +1,4 @@
+import { MonitorRepository } from '../../database/repositories/monitor.repository.js';
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -102,6 +103,7 @@ export class StatsDatabase {
     domain: DomainRepository;
     backend: BackendRepository;
     health: HealthRepository;
+    monitor: MonitorRepository;
   };
 
   constructor(dbPath = 'stats.db') {
@@ -123,6 +125,7 @@ export class StatsDatabase {
       domain: new DomainRepository(this.db),
       backend: new BackendRepository(this.db),
       health: new HealthRepository(this.db),
+      monitor: new MonitorRepository(this.db),
     };
   }
 

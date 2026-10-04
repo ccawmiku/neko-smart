@@ -319,3 +319,5 @@ export type BackendType = 'clash' | 'surge';
 // Gateway utilities
 export * from './gateway-utils.js';
 export * from './geo-ip-utils.js';
+
+export * from './monitor.js';

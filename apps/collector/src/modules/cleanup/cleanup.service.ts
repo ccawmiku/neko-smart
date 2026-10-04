@@ -116,6 +116,7 @@ export class CleanupService {
 
       // Clean up old health logs (independently overridable, defaults to hourlyStatsDays)
       this.cleanupHealthLogs();
+      this.db.repos.monitor.prune(config.connectionLogsDays);
 
       // Vacuum database to reclaim space (only if significant data deleted)
       const totalDeleted = logsDeleted + hourlyDeleted;

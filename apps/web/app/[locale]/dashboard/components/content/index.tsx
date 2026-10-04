@@ -1,5 +1,6 @@
 "use client";
 
+import { MonitorContent } from "@/components/features/monitor";
 import { useState, memo } from "react";
 import { useTranslations } from "next-intl";
 import {
@@ -331,6 +332,11 @@ export function Content({
 }: ContentProps) {
   const renderContent = () => {
     switch (activeTab) {
+      case "privacy":
+      case "node-monitor":
+      case "bandwidth":
+      case "monitor-settings":
+        return <MonitorContent key={`${activeTab}-${activeBackendId}`} kind={activeTab === "node-monitor" ? "nodes" : activeTab === "monitor-settings" ? "settings" : activeTab} backendId={activeBackendId} timeRange={timeRange} autoRefresh={autoRefresh} onSettings={() => onNavigate?.("monitor-settings")} />;
       case "overview":
         return (
           <OverviewContent

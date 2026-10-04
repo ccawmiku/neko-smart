@@ -1,3 +1,4 @@
+import { monitorController } from '../monitor/monitor.controller.js';
 /**
  * Main Fastify Application
  * 
@@ -1321,6 +1322,8 @@ export async function createApp(options: AppOptions) {
       '/api/auth/state',
       '/api/auth/verify',
       '/api/auth/logout', // Add logout as public so we can clear cookies even if invalid
+      '/api/monitor/report',
+      '/api/monitor/agent-settings',
       '/api/agent/heartbeat',
       '/api/agent/report',
       '/api/agent/config',
@@ -1378,6 +1381,7 @@ export async function createApp(options: AppOptions) {
   await app.register(statsController, { prefix: '/api/stats' });
   await app.register(authController, { prefix: '/api/auth' });
   await app.register(configController, { prefix: '/api/db' });
+  await app.register(monitorController, { prefix: '/api/monitor' });
 
   if (autoListen) {
     // Start server

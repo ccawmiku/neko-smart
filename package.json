@@ -1,7 +1,7 @@
 {
-  "name": "neko-master",
+  "name": "neko-smart",
   "version": "1.4.0",
-  "description": "Modern traffic analytics for edge gateways",
+  "description": "Unified router privacy, node health and bandwidth monitoring",
   "private": true,
   "workspaces": [
     "apps/*",

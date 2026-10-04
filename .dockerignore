@@ -47,3 +47,9 @@ data
 tmp
 temp
 *.tmp
+
+# Private router data and local toolchains
+.private
+.cache
+artifacts
+.env

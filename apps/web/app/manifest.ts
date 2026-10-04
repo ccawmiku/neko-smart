@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Neko Master",
-    short_name: "Neko Master",
+    name: "neko-smart",
+    short_name: "neko-smart",
     description: "Modern traffic analytics for edge gateways",
     start_url: "/",
     scope: "/",
