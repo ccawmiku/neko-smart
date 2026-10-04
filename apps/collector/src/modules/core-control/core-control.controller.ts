@@ -7,6 +7,14 @@ import {
 import { isAgentBackendUrl } from "@neko-master/shared";
 export const coreControlController: FastifyPluginAsync = async (app) => {
   const service = new CoreControlService();
+  // Browser-controlled Fetch Metadata cannot be forged by third-party page scripts.
+  app.addHook("preHandler", async (request, reply) => {
+    if (request.headers["sec-fetch-site"] === "cross-site") {
+      return reply
+        .code(403)
+        .send({ error: "Cross-site controller access is forbidden" });
+    }
+  });
   app.addHook("onClose", async () => service.close());
   const backend = (raw: string) => {
     const id = Number(raw);
@@ -28,11 +36,9 @@ export const coreControlController: FastifyPluginAsync = async (app) => {
           req.params.resource,
         );
       } catch (e) {
-        return reply
-          .code(e instanceof CoreError ? e.status : 502)
-          .send({
-            error: e instanceof CoreError ? e.message : "Core unavailable",
-          });
+        return reply.code(e instanceof CoreError ? e.status : 502).send({
+          error: e instanceof CoreError ? e.message : "Core unavailable",
+        });
       }
     },
   );
@@ -47,11 +53,9 @@ export const coreControlController: FastifyPluginAsync = async (app) => {
           ),
         };
       } catch (e) {
-        return reply
-          .code(e instanceof CoreError ? e.status : 502)
-          .send({
-            error: e instanceof CoreError ? e.message : "Control action failed",
-          });
+        return reply.code(e instanceof CoreError ? e.status : 502).send({
+          error: e instanceof CoreError ? e.message : "Control action failed",
+        });
       }
     },
   );

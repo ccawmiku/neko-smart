@@ -26,21 +26,31 @@ describe("MetaCube native controller", () => {
     vi.unstubAllGlobals();
   });
   const route = (id: number) => `/api/core-control/${id}`;
+  it("blocks cross-site browser control without requiring page login", async () => {
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    const response = await app.inject({
+      method: "POST",
+      url: route(id) + "/actions",
+      headers: { "sec-fetch-site": "cross-site" },
+      payload: { action: "flush-dns" },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(f).not.toHaveBeenCalled();
+  });
   it("shares stored backend credentials without exposing controller secrets", async () => {
     db.updateBackend(id, { token: "private-secret" });
-    const f = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            mode: "rule",
-            secret: "must-not-leak",
-            "log-level": "info",
-            dns: { nameserver: ["private"] },
-            tun: { enable: true, device: "private" },
-          }),
-        ),
-      );
+    const f = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          mode: "rule",
+          secret: "must-not-leak",
+          "log-level": "info",
+          dns: { nameserver: ["private"] },
+          tun: { enable: true, device: "private" },
+        }),
+      ),
+    );
     vi.stubGlobal("fetch", f);
     const r = await app.inject({ url: route(id) + "/config" });
     expect(r.statusCode).toBe(200);
