@@ -36,7 +36,7 @@ config accounting 'bandwidth'
  option database_directory '/var/lib/neko-smart/bandwidth'
  option database_generations '10'
  option database_interval '1'
- list local_network '192.168.1.0/24'
+ list local_network 'lan'
 
 config reporter 'report'
  option enabled '0'

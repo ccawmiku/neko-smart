@@ -4,13 +4,15 @@
 
 ## 部署配置
 
-安装与设备架构和 OpenWrt 版本匹配的 `neko-smart-router` 包。本次使用 0.1.0-r7。配置原生服务的中心地址及连接令牌后，运行：
+安装与设备架构和 OpenWrt 版本匹配的 `neko-smart-router` 包。本次更新使用 0.1.0-r9。配置原生服务的中心地址及连接令牌后，运行：
 
 ```sh
 docker compose -f docker-compose.router.yml up -d
 ```
 
 网页端口 18082，API 3001，WebSocket 3002。中心保持用户选择的免登录模式；原生上报仍使用独立令牌。不要导出含连接密钥的数据库或路由器配置到公开仓库。
+
+免登录入口须限制在可信 LAN。实机检查发现原 WAN input 为 ACCEPT，现已添加 `neko_smart_management` 规则限制校园网侧的管理、内核控制与本地 DNS 服务访问。部署时应检查宿主防火墙和 Docker 网络模式；不能只靠私有 IP 判断可访问范围。分类与本次修复说明见 [隐私分类与设备范围](privacy-metrics.zh.md)。
 
 容器限制 512 MiB 内存、1.5 核 CPU、128 个进程，删除 Linux capabilities，启用 `no-new-privileges`。运行数据库位于 `/app/runtime` 的 256 MiB tmpfs；该上限按需使用，并计入容器内存限制。`/tmp` 上限 32 MiB，容器日志使用 local driver，最多 2 个 1 MiB 文件。宿主不支持 swap 限制，当前没有配置 swap。
 

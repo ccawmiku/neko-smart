@@ -3,7 +3,7 @@
 import { useState, useEffect, useId } from "react";
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldCheck,
   Activity,
@@ -35,6 +35,7 @@ import { StatCard } from "@/components/features/stats/stat-card";
 import { api, type TimeRange } from "@/lib/api";
 import {
   getMonitorQueryKey,
+  getMonitorBackendQueryKey,
   getMonitorPeriodQueryKey,
 } from "@/lib/stats-query-keys";
 import { useStableTimeRange } from "@/lib/hooks/use-stable-time-range";
@@ -89,6 +90,7 @@ export function MonitorContent({
   onSettings,
 }: Props) {
   const t = useTranslations("monitor");
+  const queryClient = useQueryClient();
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 15000);
@@ -100,7 +102,20 @@ export function MonitorContent({
     queryFn: () => api.getMonitor(backendId, range),
     enabled: !!backendId,
     refetchInterval: autoRefresh ? 15000 : false,
+    placeholderData: (previous, previousQuery) => {
+      const previousBackend = previousQuery?.queryKey[1] as
+        | { backendId?: number }
+        | undefined;
+      return previousBackend?.backendId === backendId ? previous : undefined;
+    },
   });
+  const cached = queryClient
+    .getQueryCache()
+    .findAll({ queryKey: getMonitorBackendQueryKey(backendId) })
+    .filter((q) => q.state.data !== undefined)
+    .sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)[0]?.state
+    .data as MonitorState | undefined;
+  const state = query.data ?? cached;
   if (!backendId)
     return (
       <Card className="gap-4 py-4">
@@ -109,7 +124,7 @@ export function MonitorContent({
         </CardContent>
       </Card>
     );
-  if (query.isPending)
+  if (query.isPending && !state)
     return (
       <Card className="gap-4 py-4">
         <CardContent className="py-12 animate-pulse text-muted-foreground">
@@ -117,7 +132,7 @@ export function MonitorContent({
         </CardContent>
       </Card>
     );
-  if (query.isError)
+  if (query.isError && !state)
     return (
       <Card className="gap-4 py-4">
         <CardContent className="py-10 space-y-3">
@@ -126,7 +141,6 @@ export function MonitorContent({
         </CardContent>
       </Card>
     );
-  const state = query.data;
   if (!state) return null;
   if (kind === "settings")
     return (
@@ -171,6 +185,17 @@ export function MonitorContent({
           {t("settings")}
         </Button>
       </div>
+      {query.isError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm"
+        >
+          <span>{t("refreshFailed")}</span>
+          <Button size="sm" variant="outline" onClick={() => query.refetch()}>
+            {t("retry")}
+          </Button>
+        </div>
+      )}
       {kind === "privacy" ? (
         <Privacy state={state} fresh={fresh} />
       ) : kind === "nodes" ? (
@@ -541,12 +566,20 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
         <Stat
           label={t("overseasSni")}
           value={observed ? num(sni.overseas) : "—"}
-          hint={t("sniHint")}
+          hint={
+            num(sni.unknown)
+              ? t("unclassifiedSni", { count: num(sni.unknown) })
+              : t("sniHint")
+          }
         />
         <Stat
           label={t("overseasDirect")}
           value={num(risks.overseas_direct)}
-          hint={t("routeHint")}
+          hint={
+            num(obj(geo.unknown).direct)
+              ? t("unclassifiedDirect", { count: num(obj(geo.unknown).direct) })
+              : t("routeHint")
+          }
         />
         <Stat
           label={t("dnsProtection")}
@@ -670,28 +703,34 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
             <CardDescription>{t("protocolHint")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {Object.entries(obj(d.protocols)).map(([protocol, item], i) => {
-              const x = obj(item);
-              const value = num(x[measure]);
-              return (
-                <div key={i}>
-                  <div className="mb-1 flex justify-between gap-3 text-sm">
-                    <span>{protocol}</span>
-                    <span className="text-muted-foreground">
-                      {measure === "bytes" ? bytes(value) : value}
-                    </span>
+            {Object.entries(obj(d.protocols))
+              .sort((a, b) => num(obj(b[1])[measure]) - num(obj(a[1])[measure]))
+              .map(([protocol, item], i) => {
+                const x = obj(item);
+                const value = num(x[measure]);
+                return (
+                  <div key={i}>
+                    <div className="mb-1 flex justify-between gap-3 text-sm">
+                      <span title={protocol}>
+                        {t.has(`protocol_${protocol}`)
+                          ? t(`protocol_${protocol}`)
+                          : protocol}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {measure === "bytes" ? bytes(value) : value}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{
+                          width: `${total ? Math.min(100, (value / total) * 100) : 0}%`,
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-2 rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{
-                        width: `${total ? Math.min(100, (value / total) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </CardContent>
         </Card>
       </div>
@@ -1108,6 +1147,7 @@ function Bandwidth({
     resolvedTheme === "dark" ? ["#60a5fa", "#34d399"] : ["#2563eb", "#059669"];
   const live = state.snapshot?.bandwidth ?? {};
   const [period, setPeriod] = useState("");
+  const [scope, setScope] = useState("lan");
   const archived = useQuery({
     queryKey: getMonitorPeriodQueryKey(backendId, period),
     queryFn: () => api.getBandwidthPeriod(backendId, period),
@@ -1119,7 +1159,17 @@ function Bandwidth({
     period && period !== live.period
       ? (archived.data ?? { available: false, period })
       : live;
-  const totals = obj(b.totals);
+  const sourceRows = arr(b.devices).map(obj);
+  const scopeRows = sourceRows.filter(
+    (row) => scope === "all" || (str(row.scope) || "unknown") === scope,
+  );
+  const totals = scopeRows.reduce<{ download: number; upload: number }>(
+    (sum, row) => ({
+      download: sum.download + num(row.rx_bytes),
+      upload: sum.upload + num(row.tx_bytes),
+    }),
+    { download: 0, upload: 0 },
+  );
   const iface = obj(arr(live.interfaces)[0]);
   const devices = new Map<
     string,
@@ -1131,16 +1181,16 @@ function Bandwidth({
       connections: number;
     }
   >();
-  for (const raw of arr(b.devices)) {
+  for (const raw of scopeRows) {
     const row = obj(raw);
     const mac = str(row.mac);
     const id =
       mac && mac !== "00:00:00:00:00:00"
-        ? mac
+        ? `${str(row.scope)}:${mac}`
         : `${str(row.ip)}:${num(row.family)}`;
     const old = devices.get(id) || {
       name:
-        str(row.hostname) ||
+        (row.scope === "router" ? t("scopeRouter") : str(row.hostname)) ||
         (mac && mac !== "00:00:00:00:00:00"
           ? mac
           : str(row.ip) || t("unknown")),
@@ -1191,6 +1241,26 @@ function Bandwidth({
           )}
         </div>
       )}
+      <div className="space-y-2">
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label={t("accountScope")}
+        >
+          {["lan", "router", "upstream", "unknown", "all"].map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={scope === value ? "default" : "outline"}
+              aria-pressed={scope === value}
+              onClick={() => setScope(value)}
+            >
+              {t(`scope${value[0].toUpperCase()}${value.slice(1)}`)}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">{t("accountScopeHint")}</p>
+      </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           icon={Download}
@@ -1284,6 +1354,16 @@ function Bandwidth({
                 </tr>
               </thead>
               <tbody>
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="p-6 text-center text-muted-foreground"
+                    >
+                      {t("scopeEmpty")}
+                    </td>
+                  </tr>
+                )}
                 {rows.map((row) => (
                   <tr key={row.name} className="border-t border-border">
                     <td className="p-3 font-medium">{row.name}</td>

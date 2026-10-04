@@ -3,6 +3,7 @@
 local nixio,fs,json,uci=require 'nixio',require 'nixio.fs',require 'luci.jsonc',require('luci.model.uci').cursor()
 local guard=dofile('/usr/share/neko-smart/privacy/guard.lua')
 local analytics=dofile('/usr/share/neko-smart/privacy/analytics.lua')
+local correlation=dofile('/usr/share/neko-smart/privacy/core-correlation.lua')
 local M={}
 local route_cache={}
 local domain_cache,trend={},{}
@@ -17,6 +18,22 @@ local function atomic(path,data)
  assert(fs.writefile(path..'.new',encoded));fs.chmod(path..'.new','600');assert(fs.rename(path..'.new',path))
 end
 local function key(network,src,dst,sport,dport)return table.concat({network or '',src or '',dst or '',tostring(sport or 0),tostring(dport or 0)},'|') end
+local provider_cache,provider_stamp,provider_checked={},'',0
+local function core_provider_regions()
+ local name=fs.basename(uci:get('openclash','config','config_path')or '')
+ if not name or #name>255 or not name:match('%.ya?ml$')then return {}end
+ local path='/etc/openclash/'..name;local stat=fs.stat(path)
+ if not stat then return {}end
+ local stamp=path..':'..tostring(stat.mtime)..':'..tostring(stat.size)
+ if stamp~=provider_stamp or os.time()-provider_checked>300 then
+  provider_stamp,provider_checked=stamp,os.time()
+  local quote=require('luci.util').shellquote
+  local output=require('luci.sys').exec('ruby /usr/share/neko-smart/privacy/core-geography.rb '..quote(path)..' 2>/dev/null')
+  provider_cache={}
+  if #output<=65536 then for line in output:gmatch('[^\r\n]+')do local name,region=line:match('^(.-)\t(%a+)$');if name and (region=='domestic' or region=='overseas')then provider_cache[name]=region end end end
+ end
+ return provider_cache
+end
 local function canonical(address)
  if not address then return '' end
  local ip=require('luci.ip').new(address);return ip and ip:string():gsub('/%d+$','') or address
@@ -48,15 +65,15 @@ local function core_connections()
   local chunks,pos={},1;while pos<=#body do local finish=body:find('\r\n',pos,true);if not finish then return {},'invalid-response' end;local len=tonumber(body:sub(pos,finish-1),16);if not len then return {},'invalid-response' end;if len==0 then break end;pos=finish+2;if pos+len-1>#body then return {},'invalid-response' end;chunks[#chunks+1]=body:sub(pos,pos+len-1);pos=pos+len+2 end;body=table.concat(chunks)
  end
  local data=json.parse(body);if not data then return {},'invalid-response' end
- local out={}
+ local out={};local regions=core_provider_regions()
  for index,connection in ipairs(array(data.connections))do if index>8192 then return out,'capacity-limit' end
   local m=connection.metadata or {};local chains=array(connection.chains);local route=chains[1]=='DIRECT' and 'direct-reported' or chains[1]=='REJECT' and 'blocked-reported' or #chains>0 and 'proxy-reported' or 'unknown'
   local item={route=route,host=m.sniffHost~='' and m.sniffHost or m.host,chains=chains,rule=connection.rule,rule_payload=connection.rulePayload,destination_geoip=m.destinationGeoIP,target_ip=m.destinationIP,target_port=m.destinationPort,bytes=(tonumber(connection.upload)or 0)+(tonumber(connection.download)or 0)}
-  item.site_region,item.site_region_evidence=analytics.classify(item)
-  out[key(m.network,canonical(m.sourceIP),canonical(m.destinationIP),m.sourcePort,m.destinationPort)]=item
+  item.site_region,item.site_region_evidence=analytics.classify(item,regions)
+  correlation.add(out,key(m.network,canonical(m.sourceIP),canonical(m.destinationIP),m.sourcePort,m.destinationPort),item)
   -- Explicit HTTP/SOCKS clients connect to the router listener, not the final
   -- target. Correlate the exact inbound tuple reported by the standard API.
-  if m.inboundIP and m.inboundPort then out[key(m.network,canonical(m.sourceIP),canonical(m.inboundIP),m.sourcePort,m.inboundPort)]=item end
+  if m.inboundIP and m.inboundPort then correlation.add(out,key(m.network,canonical(m.sourceIP),canonical(m.inboundIP),m.sourcePort,m.inboundPort),item)end
  end
  return out,'available'
 end
@@ -96,7 +113,7 @@ function M.snapshot(previous_health)
  local cfg=guard.settings();local capture=cfg.monitor_enabled=='1' and readjson(root..'capture.json') or {flows={}};capture=capture or {flows={}};local fresh=capture.timestamp and os.time()-capture.timestamp<=15
  local core,core_state={},'disabled';if cfg.monitor_enabled=='1'then core,core_state=core_connections()end;local captured,wan={},{}
  local now=os.time();local active_domains={}
- for _,c in pairs(core)do if c.host and c.host~='' and c.site_region~='unknown' then local domain=c.host:lower():gsub('%.$','');local known=active_domains[domain];if known and known.site_region~=c.site_region then active_domains[domain]={site_region='unknown',site_region_evidence='conflicting-core-domain-evidence',time=now} else active_domains[domain]={site_region=c.site_region,site_region_evidence=c.site_region_evidence,time=now}end end end
+ for _,c in pairs(core)do if c and c.host and c.host~='' and c.site_region~='unknown' then local domain=c.host:lower():gsub('%.$','');local known=active_domains[domain];if known and known.site_region~=c.site_region then active_domains[domain]={site_region='unknown',site_region_evidence='conflicting-core-domain-evidence',time=now} else active_domains[domain]={site_region=c.site_region,site_region_evidence=c.site_region_evidence,time=now}end end end
  for domain,value in pairs(active_domains)do domain_cache[domain]=value end
  local domain_count=0;for domain,value in pairs(domain_cache)do domain_count=domain_count+1;if now-value.time>300 or domain_count>4096 then domain_cache[domain]=nil end end
  for _,f in ipairs(array(capture.flows))do
@@ -107,7 +124,7 @@ function M.snapshot(previous_health)
  local out,seen={},{};local count=0;local ct=cfg.monitor_enabled=='1' and io.open('/proc/net/nf_conntrack','r') or nil
  if ct then for line in ct:lines()do count=count+1;if count>16384 then break end;local flow=M.parse_conntrack(line)
   if flow then
-   local k=key(flow.network,flow.source,flow.destination,flow.source_port,flow.destination_port);local evidence=captured[k] or wan[k];local c=core[k]
+   local k=key(flow.network,flow.source,flow.destination,flow.source_port,flow.destination_port);local evidence=captured[k] or wan[k];local c,matched=correlation.match(core,flow);flow.core_match=matched
    local direct=fresh and wan[key(flow.network,flow.reply_destination,flow.reply_source,flow.reply_dport,flow.reply_sport)]
    if direct then
     local wk=key(flow.network,flow.reply_destination,flow.reply_source,flow.reply_dport,flow.reply_sport);seen[wk]=true

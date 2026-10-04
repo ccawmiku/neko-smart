@@ -335,6 +335,9 @@ export function useDashboard(): UseDashboardReturn {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["stats"] }),
           queryClient.invalidateQueries({ queryKey: ["backends"] }),
+          queryClient.invalidateQueries({ queryKey: ["monitor"] }),
+          queryClient.invalidateQueries({ queryKey: ["monitor-period"] }),
+          queryClient.invalidateQueries({ queryKey: ["core-control"] }),
         ]);
       } finally {
         if (showLoading) {

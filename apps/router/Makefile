@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=neko-smart-router
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=7
+PKG_RELEASE:=9
 PKG_LICENSE:=GPL-3.0-or-later ISC
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 include $(INCLUDE_DIR)/package.mk
@@ -14,6 +14,15 @@ endef
 define Package/neko-smart-router/conffiles
 /etc/config/neko_smart
 /usr/share/neko-smart/protocols.txt
+endef
+
+define Package/neko-smart-router/prerm
+#!/bin/sh
+# Explicit staged upgrades keep DNS and capture running until selected restarts.
+[ "$${IPKG_NO_SCRIPT}" = 1 ] && exit 0
+[ -s "$${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "$${IPKG_INSTROOT}/lib/functions.sh"
+default_prerm $$0 $$@
 endef
 define Build/Prepare
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)

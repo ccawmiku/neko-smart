@@ -3,6 +3,7 @@ local fs,nixio,json,uci=require 'nixio.fs',require 'nixio',require 'luci.jsonc',
 local guard=dofile('/usr/share/neko-smart/privacy/guard.lua')
 local history=dofile('/usr/share/neko-smart/nodes/history.lua')
 local openclash=dofile('/usr/share/neko-smart/openclash.lua')
+local account_scope=dofile('/usr/share/neko-smart/account-scope.lua')
 local root='/var/run/neko-smart/'
 fs.mkdirr(root);fs.chmod(root,'700')
 local boot=(fs.readfile('/proc/sys/kernel/random/boot_id')or tostring(os.time())):gsub('[^%w_-]','')..'-'..tostring(nixio.getpid())
@@ -12,6 +13,9 @@ local function read(path,limit)local s=fs.stat(path);if s and s.size<(limit or 8
 local function numeric(path)return tonumber(fs.readfile(path)or '')end
 local function safe_array(value)return type(value)=='table' and value or {}end
 local function bandwidth()
+ local statuses={};local bus=require('ubus').connect()
+ if bus then for _,name in ipairs({'lan','wan','wan6'})do local ok,status=pcall(bus.call,bus,'network.interface.'..name,'status',{});if ok and status then statuses[name]=status end end;bus:close()end
+ local context=account_scope.context(statuses)
  local enabled=uci:get('neko_smart','bandwidth','enabled')=='1';local data=enabled and json.parse(require('luci.sys').exec('/usr/sbin/neko-smart-ledger -c json 2>/dev/null'))or nil
  local periods={};local period_text=enabled and require('luci.sys').exec('/usr/sbin/neko-smart-ledger -c list 2>/dev/null')or '';local period=''
  for date in period_text:gmatch('%d%d%d%d%-%d%d%-%d%d')do if date>period then period=date end;periods[#periods+1]=date end;table.sort(periods,function(a,b)return a>b end);while #periods>24 do table.remove(periods)end
@@ -20,6 +24,7 @@ local function bandwidth()
  for index,row in ipairs(data and data.data or {})do if index>8192 then break end;local device={}
   for i,name in ipairs(columns)do device[name]=row[i]end
   device.hostname=names[device.ip]
+  device.scope=account_scope.classify(device.ip,context)
   devices[#devices+1]=device;totals.download=totals.download+(tonumber(device.rx_bytes)or 0);totals.upload=totals.upload+(tonumber(device.tx_bytes)or 0)
  end
  local archive=nil
@@ -27,7 +32,7 @@ local function bandwidth()
   archive_index=archive_index%#periods+1;local date=periods[archive_index]
   local past=json.parse(require('luci.sys').exec('/usr/sbin/neko-smart-ledger -c json -t '..date..' 2>/dev/null'))
   if past then local records={};local sums={download=0,upload=0}
-   for index,row in ipairs(past.data or {})do if index>8192 then break end;local record={};for i,name in ipairs(past.columns or {})do record[name]=row[i]end;record.hostname=names[record.ip];records[#records+1]=record;sums.download=sums.download+(tonumber(record.rx_bytes)or 0);sums.upload=sums.upload+(tonumber(record.tx_bytes)or 0)end
+   for index,row in ipairs(past.data or {})do if index>8192 then break end;local record={};for i,name in ipairs(past.columns or {})do record[name]=row[i]end;record.hostname=names[record.ip];record.scope=account_scope.classify(record.ip,context);records[#records+1]=record;sums.download=sums.download+(tonumber(record.rx_bytes)or 0);sums.upload=sums.upload+(tonumber(record.tx_bytes)or 0)end
    archive={period=date,devices=records,totals=sums,available=true,capacity_limited=#(past.data or {})>8192}
   end
  end
@@ -38,7 +43,7 @@ local function bandwidth()
   interfaces[1]={name=wan,rx=rx,tx=tx,rxBps=valid and (rx-old.rx)/delta or json.null,txBps=valid and (tx-old.tx)/delta or json.null,interval=delta,available=rx~=nil and tx~=nil}
   if rx and tx then counters[wan]={rx=rx,tx=tx,time=now}end
  end
- return {available=data~=nil,enabled=enabled,period=period,periods=periods,archive=archive,devices=devices,totals=totals,interfaces=interfaces,refresh_interval=tonumber(uci:get('neko_smart','bandwidth','refresh_interval'))or 30,capacity_limited=data and #(data.data or {})>8192 or false}
+ return {available=data~=nil,enabled=enabled,period=period,periods=periods,archive=archive,devices=devices,totals=totals,interfaces=interfaces,network_context=context,refresh_interval=tonumber(uci:get('neko_smart','bandwidth','refresh_interval'))or 30,capacity_limited=data and #(data.data or {})>8192 or false}
 end
 local function request(method,url,body)
  local base=uci:get('neko_smart','report','collector_url')or '';local token=uci:get('neko_smart','report','token')or ''

@@ -1,9 +1,13 @@
 -- Evidence summaries only. Website geography comes from Mihomo, never routing
 -- group names, DIRECT/PROXY, an independent domain list or an external lookup.
 local M={}
-function M.classify(core)
+function M.classify(core,providers)
  if type(core)~='table' then return 'unknown','no-core-evidence' end
  local rule=(core.rule or ''):lower();local payload=(core.rule_payload or ''):lower()
+ if rule=='ruleset' and type(providers)=='table' then
+  local region=providers[core.rule_payload]
+  if region=='domestic' or region=='overseas' then return region,'mihomo-rule-provider:'..core.rule_payload end
+ end
  if rule=='geosite' then
   if payload=='cn' or payload=='geolocation-cn' or payload=='geosite-cn' then return 'domestic','mihomo-rule:'..rule..':'..payload end
   if payload=='geolocation-!cn' or payload=='geosite-geolocation-!cn' then return 'overseas','mihomo-rule:'..rule..':'..payload end

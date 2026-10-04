@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-10-04
+
+### Fixed
+
+- Keep monitoring data and interactions visible during refresh; report refresh errors inline.
+- Correlate Fake-IP / REDIRECT connections and classify geographic rule sets from trusted core configuration sources.
+- Separate LAN devices, router traffic and other networks using interface subnets, preserving historical records.
+- Native r9 supports explicitly staged upgrades without stopping independent DNS through package hooks.
+
 ## [1.4.0] - 2026-07-19
 
 This release comes from a second external deep code review. Each finding was independently verified before fixing; the high-priority ones — data correctness, security defaults, error visibility, and a live install failure — are addressed here.
