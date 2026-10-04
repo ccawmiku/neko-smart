@@ -11,7 +11,7 @@ Mihomo 统计仍由原 Collector 处理；隐私使用 WAN 抓包和连接证据
 ## 代码边界
 
 - 路由器配置统一 `/etc/config/neko_smart`，服务 `neko-smart`，nft 表 `inet neko_smart`。
-- 隐私/节点/带宽独立 procd 实例，每实例内存有上限并降低调度优先级；原有 Node/Next 服务不搬到路由器。
+- 隐私、节点和带宽采集使用独立 procd 实例并降低调度优先级。Node/Next 监控中心可在路由器 Docker 运行，使用独立的 CPU、内存和日志限制，见 [路由器部署与实测](router-runtime.zh.md)。
 - RAM 快照 `/var/run/neko-smart`；节点持久化 `/etc/neko-smart/nodes`；设备账本 `/var/lib/neko-smart/bandwidth`。
 - 标准 Mihomo API 是唯一代理核心接口；不修改核心或 metacubexd。
 - 每个路由器连接使用 32 字节随机令牌，服务端只存 SHA256；上报 bootId/sequence 去重，旧时间报告不能覆盖新状态。
@@ -35,7 +35,7 @@ Windows 中心测试进程树 CPU 限制 12.5% 宿主、1536 MiB 内存；生产
 
 [Neko Master](https://github.com/foru17/neko-master)、[nlbwmon](https://github.com/jow-/nlbwmon)、[LuCI 带宽页面](https://github.com/openwrt/luci/blob/master/applications/luci-app-nlbwmon/htdocs/luci-static/resources/view/nlbw/display.js)。许可见 NOTICE。验证结果以实际检查日志为准，不以示例数据代替真实采集。
 
-## 本次部署验收（2026-10-04）
+## 首次迁移验收（2026-10-04，r6）
 
 路由器安装 neko-smart-router 0.1.0-r6；三个旧监控服务已停止并禁用开机启动，OpenClash 核心仍运行。原 OpenClash UCI 和两个配置文件的 SHA256 与迁移前相同。7 个节点历史已恢复，完整带宽周期账本与原文件校验值一致，新采集包含设备/协议账本记录。DoH 解析、nft 防护、抓包新鲜度与中心上报均已核验。
 

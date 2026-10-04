@@ -9,11 +9,16 @@ services:
     memswap_limit: 512m
     cpus: 1.5
     pids_limit: 128
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     stop_grace_period: 60s
     environment:
       WEB_PORT: "18082"
       API_PORT: "3001"
       COLLECTOR_WS_PORT: "3002"
+      DB_PATH: "/app/runtime/stats.db"
       RAM_DATABASE: "1"
       COLLECTOR_BASELINE_ON_START: "1"
       DB_BACKUP_INTERVAL: "3600"
@@ -23,7 +28,7 @@ services:
     volumes:
       - /overlay/neko-smart-center:/app/persist
     tmpfs:
-      - /app/runtime:size=128m,mode=0700
+      - /app/runtime:size=256m,mode=0700
       - /tmp:size=32m,mode=1777
     logging:
       driver: "local"

@@ -259,6 +259,17 @@ function Plot({
   const displayed = points.filter(
     (_, i) => i % step === 0 || i === points.length - 1,
   );
+  const from = Number(points[0]?.time);
+  const to = Number(points.at(-1)?.time);
+  const eventGroups = new Map<number, { time: number; up: boolean }[]>();
+  for (const event of events
+    .filter((e) => e.time >= from && e.time <= to)
+    .slice(-12)) {
+    const bucket = Math.floor(
+      (event.time - from) / Math.max(1, (to - from) / 24),
+    );
+    eventGroups.set(bucket, [...(eventGroups.get(bucket) ?? []), event]);
+  }
   return (
     <div className="min-w-0">
       <div className="mb-3 flex flex-wrap gap-x-5 gap-y-2 text-xs">
@@ -279,12 +290,27 @@ function Plot({
             </strong>
           </span>
         ))}
+        {!!eventGroups.size &&
+          [false, true].map((up) => (
+            <span
+              key={String(up)}
+              className="flex items-center gap-2 text-muted-foreground"
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{
+                  backgroundColor: up ? "#10b981" : "var(--destructive)",
+                }}
+              />
+              {t(up ? "recovered" : "failedEvent")}
+            </span>
+          ))}
       </div>
       <div className="h-52 w-full sm:h-60">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={displayed}
-            margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
+            margin={{ top: 14, right: 12, left: 0, bottom: 0 }}
           >
             <defs>
               {keys.map((k) => (
@@ -360,27 +386,57 @@ function Plot({
                 borderRadius: 12,
               }}
             />
-            {events
-              .filter(
-                (e) =>
-                  e.time >= Number(points[0]?.time) &&
-                  e.time <= Number(points.at(-1)?.time),
-              )
-              .slice(-12)
-              .map((e, i) => (
+            {[...eventGroups.values()].map((group, i) => {
+              const e = group[group.length - 1];
+              const color = e.up ? "#10b981" : "var(--destructive)";
+              const description = group
+                .map(
+                  (event) =>
+                    `${stamp(event.time)} · ${t(event.up ? "recovered" : "failedEvent")}`,
+                )
+                .join("\n");
+              return (
                 <ReferenceLine
                   key={i}
                   x={e.time}
-                  stroke={e.up ? "var(--chart-2)" : "var(--destructive)"}
+                  stroke={color}
+                  strokeOpacity={0.55}
                   strokeDasharray="3 3"
                   label={{
-                    value: t(e.up ? "recovered" : "failedEvent"),
-                    position: "insideTop",
-                    fill: "currentColor",
-                    fontSize: 10,
+                    content: ({ viewBox }) => {
+                      const box = viewBox as { x?: number; y?: number };
+                      return (
+                        <g
+                          transform={`translate(${box.x ?? 0},${box.y ?? 0})`}
+                          role="img"
+                          aria-label={description}
+                          tabIndex={0}
+                          className="cursor-help"
+                        >
+                          <title>{description}</title>
+                          <circle
+                            r={group.length > 1 ? 8 : 5}
+                            fill={color}
+                            stroke="var(--card)"
+                            strokeWidth={2}
+                          />
+                          {group.length > 1 && (
+                            <text
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fill="white"
+                              fontSize={9}
+                            >
+                              {group.length}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    },
                   }}
                 />
-              ))}
+              );
+            })}
             {keys.map((k) => (
               <Area
                 key={k.key}
