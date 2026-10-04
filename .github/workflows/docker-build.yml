@@ -74,6 +74,7 @@ jobs:
             type=sha,prefix=dev-,enable=${{ github.ref_name == 'dev' }}
 
       - name: Build and push Docker image
+        id: image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -83,3 +84,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: ${{ github.event_name == 'workflow_dispatch' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+
+      - name: Export router image for offline installation
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          docker pull "$GHCR_IMAGE@$IMAGE_DIGEST"
+          docker tag "$GHCR_IMAGE@$IMAGE_DIGEST" "$GHCR_IMAGE:router"
+          docker save "$GHCR_IMAGE:router" -o "$RUNNER_TEMP/neko-smart-router.tar"
+          sha256sum "$RUNNER_TEMP/neko-smart-router.tar" > "$RUNNER_TEMP/neko-smart-router.tar.sha256"
+
+      - name: Upload router image
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: neko-smart-router-image
+          path: |
+            ${{ runner.temp }}/neko-smart-router.tar
+            ${{ runner.temp }}/neko-smart-router.tar.sha256
+          retention-days: 3

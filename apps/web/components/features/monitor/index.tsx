@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +10,8 @@ import {
   Gauge,
   AlertTriangle,
   Settings2,
+  Download,
+  Upload,
 } from "lucide-react";
 import {
   PieChart,
@@ -29,6 +31,7 @@ import type {
   MonitorObject,
   MonitorState,
 } from "@neko-master/shared";
+import { StatCard } from "@/components/features/stats/stat-card";
 import { api, type TimeRange } from "@/lib/api";
 import {
   getMonitorQueryKey,
@@ -100,7 +103,7 @@ export function MonitorContent({
   });
   if (!backendId)
     return (
-      <Card>
+      <Card className="gap-4 py-4">
         <CardContent className="py-12 text-center text-muted-foreground">
           {t("selectBackend")}
         </CardContent>
@@ -108,7 +111,7 @@ export function MonitorContent({
     );
   if (query.isPending)
     return (
-      <Card>
+      <Card className="gap-4 py-4">
         <CardContent className="py-12 animate-pulse text-muted-foreground">
           {t("loading")}
         </CardContent>
@@ -116,7 +119,7 @@ export function MonitorContent({
     );
   if (query.isError)
     return (
-      <Card>
+      <Card className="gap-4 py-4">
         <CardContent className="py-10 space-y-3">
           <p role="alert">{t("error")}</p>
           <Button onClick={() => query.refetch()}>{t("retry")}</Button>
@@ -135,12 +138,12 @@ export function MonitorContent({
     );
   if (!state.snapshot)
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("notConnected")}</CardTitle>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="text-sm">{t("notConnected")}</CardTitle>
           <CardDescription>{t("notConnectedHint")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           <Button onClick={onSettings}>
             <Settings2 className="mr-2 h-4 w-4" />
             {t("settings")}
@@ -188,49 +191,67 @@ function Stat({
   value,
   hint,
   status,
+  icon = Gauge,
 }: {
   label: string;
   value: string | number;
   hint?: string;
   status?: "good" | "warning" | "unknown";
+  icon?: typeof Gauge;
 }) {
+  const { resolvedTheme } = useTheme();
+  const color =
+    status === "good"
+      ? resolvedTheme === "dark"
+        ? "#34d399"
+        : "#059669"
+      : status === "warning"
+        ? resolvedTheme === "dark"
+          ? "#fbbf24"
+          : "#d97706"
+        : status === "unknown"
+          ? "#94a3b8"
+          : "#3b82f6";
   return (
-    <Card>
-      <CardContent className="pt-5">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        {status ? (
-          <div className="mt-3 flex items-center gap-3">
-            <ShieldCheck
-              className={`h-9 w-9 ${status === "good" ? "text-emerald-600 dark:text-emerald-400" : status === "warning" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}
-            />
-            <p className="text-sm font-medium">{value}</p>
-            <span
-              className={`ml-auto h-2.5 w-2.5 rounded-full ${status === "good" ? "bg-emerald-600 dark:bg-emerald-400" : status === "warning" ? "bg-amber-600 dark:bg-amber-400" : "bg-muted-foreground"}`}
-            />
-          </div>
-        ) : (
-          <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
-            {value}
-          </p>
+    <StatCard
+      label={label}
+      subvalue={hint}
+      icon={status ? ShieldCheck : icon}
+      color={color}
+    >
+      <div className="mt-2 flex items-center gap-2">
+        <p
+          className={`${status ? "text-sm" : "text-lg"} truncate font-semibold leading-none tabular-nums`}
+          title={String(value)}
+        >
+          {value}
+        </p>
+        {status && (
+          <span
+            className="ml-auto h-2 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: color }}
+          />
         )}
-        {hint && <p className="mt-2 text-xs text-muted-foreground">{hint}</p>}
-      </CardContent>
-    </Card>
+      </div>
+    </StatCard>
   );
 }
 function Plot({
   points,
   keys,
   events = [],
+  unit = "",
 }: {
+  unit?: string;
   events?: { time: number; up: boolean }[];
   points: Record<string, number | null>[];
   keys: { key: string; label: string; color: string }[];
 }) {
   const t = useTranslations("monitor");
+  const gradient = useId().replace(/:/g, "");
   if (!points.length)
     return (
-      <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
         {t("noHistory")}
       </div>
     );
@@ -239,71 +260,145 @@ function Plot({
     (_, i) => i % step === 0 || i === points.length - 1,
   );
   return (
-    <div className="h-64 w-full min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
-          data={displayed}
-          margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
-        >
-          <CartesianGrid stroke="var(--border)" vertical={false} />
-          <XAxis
-            dataKey="time"
-            type="number"
-            domain={["dataMin", "dataMax"]}
-            tickFormatter={(v) =>
-              new Date(Number(v)).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            }
-            tick={{ fill: "currentColor", fontSize: 11 }}
-            minTickGap={55}
-          />
-          <YAxis tick={{ fill: "currentColor", fontSize: 11 }} width={48} />
-          <Tooltip
-            labelFormatter={(v) => stamp(Number(v))}
-            contentStyle={{
-              background: "var(--popover)",
-              borderColor: "var(--border)",
-              color: "var(--foreground)",
-              borderRadius: 12,
-            }}
-          />
-          {events
-            .filter(
-              (e) =>
-                e.time >= Number(points[0]?.time) &&
-                e.time <= Number(points.at(-1)?.time),
-            )
-            .slice(-12)
-            .map((e, i) => (
-              <ReferenceLine
-                key={i}
-                x={e.time}
-                stroke={e.up ? "var(--chart-2)" : "var(--destructive)"}
-                strokeDasharray="3 3"
-                label={{
-                  value: t(e.up ? "recovered" : "failedEvent"),
-                  position: "insideTop",
-                  fill: "currentColor",
-                  fontSize: 10,
-                }}
+    <div className="min-w-0">
+      <div className="mb-3 flex flex-wrap gap-x-5 gap-y-2 text-xs">
+        {keys.map((k) => (
+          <span
+            key={k.key}
+            className="flex items-center gap-2 text-muted-foreground"
+          >
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: k.color }}
+            />
+            {k.label}
+            <strong className="font-medium text-foreground tabular-nums">
+              {typeof points.at(-1)?.[k.key] === "number"
+                ? `${Number(points.at(-1)?.[k.key]).toLocaleString(undefined, { maximumFractionDigits: 1 })}${unit ? ` ${unit}` : ""}`
+                : "—"}
+            </strong>
+          </span>
+        ))}
+      </div>
+      <div className="h-52 w-full sm:h-60">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart
+            data={displayed}
+            margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
+          >
+            <defs>
+              {keys.map((k) => (
+                <linearGradient
+                  key={k.key}
+                  id={`${gradient}-${k.key}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor={k.color} stopOpacity={0.22} />
+                  <stop offset="95%" stopColor={k.color} stopOpacity={0.01} />
+                </linearGradient>
+              ))}
+            </defs>
+            <CartesianGrid
+              stroke="var(--border)"
+              strokeDasharray="3 5"
+              strokeOpacity={0.65}
+              vertical={false}
+            />
+            <XAxis
+              dataKey="time"
+              type="number"
+              domain={["dataMin", "dataMax"]}
+              tickFormatter={(v) =>
+                new Date(Number(v)).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              }
+              tick={{ fill: "currentColor", fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              minTickGap={55}
+            />
+            <YAxis
+              tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
+              tickLine={false}
+              axisLine={false}
+              width={44}
+              tickFormatter={(v) =>
+                Number(v) >= 1000
+                  ? `${(Number(v) / 1000).toFixed(1)}k`
+                  : Number(v).toLocaleString(undefined, {
+                      maximumFractionDigits: 1,
+                    })
+              }
+              domain={
+                unit === "ms"
+                  ? [
+                      (min: number) => Math.max(0, Math.floor(min * 0.9)),
+                      (max: number) => Math.ceil(max * 1.1),
+                    ]
+                  : [0, "auto"]
+              }
+            />
+            <Tooltip
+              labelFormatter={(v) => stamp(Number(v))}
+              formatter={(v) => [
+                `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })}${unit ? ` ${unit}` : ""}`,
+              ]}
+              cursor={{
+                stroke: "var(--muted-foreground)",
+                strokeDasharray: "3 3",
+                strokeOpacity: 0.5,
+              }}
+              contentStyle={{
+                background: "var(--popover)",
+                borderColor: "var(--border)",
+                color: "var(--foreground)",
+                borderRadius: 12,
+              }}
+            />
+            {events
+              .filter(
+                (e) =>
+                  e.time >= Number(points[0]?.time) &&
+                  e.time <= Number(points.at(-1)?.time),
+              )
+              .slice(-12)
+              .map((e, i) => (
+                <ReferenceLine
+                  key={i}
+                  x={e.time}
+                  stroke={e.up ? "var(--chart-2)" : "var(--destructive)"}
+                  strokeDasharray="3 3"
+                  label={{
+                    value: t(e.up ? "recovered" : "failedEvent"),
+                    position: "insideTop",
+                    fill: "currentColor",
+                    fontSize: 10,
+                  }}
+                />
+              ))}
+            {keys.map((k) => (
+              <Area
+                key={k.key}
+                dataKey={k.key}
+                name={k.label}
+                type={unit === "ms" ? "linear" : "monotone"}
+                stroke={k.color}
+                strokeWidth={2}
+                fill={`url(#${gradient}-${k.key})`}
+                dot={false}
+                activeDot={{ r: 4, stroke: "var(--card)", strokeWidth: 2 }}
+                connectNulls={false}
+                isAnimationActive={false}
               />
             ))}
-          {keys.map((k) => (
-            <Area
-              key={k.key}
-              dataKey={k.key}
-              name={k.label}
-              stroke={k.color}
-              fill={k.color}
-              fillOpacity={0.09}
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -381,7 +476,7 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
           {t("coverageWarning")}
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label={t("wanDns")}
           value={observed ? num(metrics.wan_plaintext) : "—"}
@@ -425,11 +520,11 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
           )}
         />
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="gap-4 py-4">
+          <CardHeader className="px-4">
             <div className="flex items-center justify-between gap-2">
-              <CardTitle>{t("encryption")}</CardTitle>
+              <CardTitle className="text-sm">{t("encryption")}</CardTitle>
               <div className="flex gap-1">
                 <Button
                   size="sm"
@@ -449,18 +544,19 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
             </div>
             <CardDescription>{t("snapshotHint")}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4">
             <div className="grid items-center gap-4 sm:grid-cols-2">
-              <div className="h-52">
+              <div className="relative h-44">
                 {total > 0 && observed ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={slices}
                         dataKey="value"
-                        innerRadius={64}
-                        outerRadius={88}
-                        paddingAngle={3}
+                        innerRadius={54}
+                        outerRadius={75}
+                        paddingAngle={2}
+                        cornerRadius={5}
                         stroke="none"
                       >
                         {slices.map((x) => (
@@ -487,7 +583,7 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
                   </div>
                 )}
               </div>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {slices.map((x) => (
                   <div
                     key={x.key}
@@ -512,9 +608,9 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
             <p className="text-xs text-muted-foreground">{t("unknownHint")}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("protocols")}</CardTitle>
+        <Card className="gap-4 py-4">
+          <CardHeader className="px-4">
+            <CardTitle className="text-sm">{t("protocols")}</CardTitle>
             <CardDescription>{t("protocolHint")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -543,14 +639,15 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
           </CardContent>
         </Card>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("privacyHistory")}</CardTitle>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="text-sm">{t("privacyHistory")}</CardTitle>
           <CardDescription>{t("snapshotHint")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           <Plot
             points={history}
+            unit="KiB/s"
             keys={types.map((key, i) => ({
               key,
               label: t(key),
@@ -559,10 +656,10 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
           />
         </CardContent>
       </Card>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("dnsEvidence")}</CardTitle>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="gap-4 py-4">
+          <CardHeader className="px-4">
+            <CardTitle className="text-sm">{t("dnsEvidence")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Evidence label={t("lanDns")} value={num(metrics.lan_plaintext)} />
@@ -580,9 +677,9 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
             ))}
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("sniEvidence")}</CardTitle>
+        <Card className="gap-4 py-4">
+          <CardHeader className="px-4">
+            <CardTitle className="text-sm">{t("sniEvidence")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {["domestic", "overseas", "unknown"].map((key) => (
@@ -596,9 +693,9 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
             <p className="text-xs text-muted-foreground">{t("echHint")}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("coverage")}</CardTitle>
+        <Card className="gap-4 py-4">
+          <CardHeader className="px-4">
+            <CardTitle className="text-sm">{t("coverage")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Evidence
@@ -623,9 +720,9 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
           </CardContent>
         </Card>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("connections")}</CardTitle>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="text-sm">{t("connections")}</CardTitle>
           <div className="flex flex-wrap gap-2">
             {["all", "dns", "sni", "direct"].map((x) => (
               <Button
@@ -642,7 +739,7 @@ function Privacy({ state, fresh }: { state: MonitorState; fresh: boolean }) {
             ))}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           <div className="max-h-96 overflow-auto rounded-lg border border-border">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 bg-muted">
@@ -764,7 +861,7 @@ function Nodes({
   const node = nodes.find((n) => str(n.name) === selected) || nodes[0];
   if (!node)
     return (
-      <Card>
+      <Card className="gap-4 py-4">
         <CardContent className="py-12 text-center text-muted-foreground">
           {t("noNodes")}
         </CardContent>
@@ -799,12 +896,18 @@ function Nodes({
           label={t("availableNodes")}
           value={nodes.filter((n) => n.status === "up").length}
         />
-        <Stat label={t("core")} value={str(data.core_state) || t("unknown")} />
+        <Stat
+          label={t("core")}
+          value={t(
+            data.core_state === "available" ? "operational" : "unconfirmed",
+          )}
+          status={data.core_state === "available" ? "good" : "warning"}
+        />
       </div>
       <div className="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("nodeList")}</CardTitle>
+        <Card className="gap-4 py-4">
+          <CardHeader className="px-4">
+            <CardTitle className="text-sm">{t("nodeList")}</CardTitle>
           </CardHeader>
           <CardContent className="max-h-[640px] space-y-2 overflow-auto">
             {nodes.map((n) => (
@@ -829,8 +932,8 @@ function Nodes({
           </CardContent>
         </Card>
         <div className="min-w-0 space-y-6">
-          <Card>
-            <CardHeader>
+          <Card className="gap-4 py-4">
+            <CardHeader className="px-4">
               <CardTitle className="break-all">{str(node.name)}</CardTitle>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
@@ -859,7 +962,7 @@ function Nodes({
                 {t("testedAt")} · {stamp(num(node.checked) * 1000)}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4">
               <div className="grid gap-4 sm:grid-cols-4">
                 {[
                   ["availability", metric(summary.availability, "%")],
@@ -880,6 +983,7 @@ function Nodes({
               </p>
               <Plot
                 points={points}
+                unit="ms"
                 events={arr(node.events).map((e) => {
                   const event = obj(e);
                   return {
@@ -1031,8 +1135,9 @@ function Bandwidth({
           )}
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
+          icon={Download}
           label={t("downloadRate")}
           value={
             typeof iface.rxBps === "number" ? `${bytes(iface.rxBps)}/s` : "—"
@@ -1040,6 +1145,7 @@ function Bandwidth({
           hint={str(iface.name)}
         />
         <Stat
+          icon={Upload}
           label={t("uploadRate")}
           value={
             typeof iface.txBps === "number" ? `${bytes(iface.txBps)}/s` : "—"
@@ -1047,22 +1153,24 @@ function Bandwidth({
           hint={str(iface.name)}
         />
         <Stat
+          icon={Download}
           label={t("periodDownload")}
           value={b.available === true ? bytes(num(totals.download)) : "—"}
           hint={str(b.period)}
         />
         <Stat
+          icon={Upload}
           label={t("periodUpload")}
           value={b.available === true ? bytes(num(totals.upload)) : "—"}
           hint={str(b.period)}
         />
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("bandwidthHistory")}</CardTitle>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="text-sm">{t("bandwidthHistory")}</CardTitle>
           <CardDescription>{t("historyHint")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           <Plot
             points={history}
             keys={[
@@ -1072,9 +1180,9 @@ function Bandwidth({
           />
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("deviceLedger")}</CardTitle>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="text-sm">{t("deviceLedger")}</CardTitle>
           <label className="flex flex-wrap items-center gap-3 text-sm">
             {t("ledgerPeriod")}
             <select
@@ -1101,7 +1209,7 @@ function Bandwidth({
             {t("ledgerHint", { seconds: num(b.refresh_interval) || 30 })}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           <div className="overflow-auto">
             <table className="w-full text-left text-sm">
               <thead>
@@ -1388,12 +1496,12 @@ function MonitorSettings({
   }
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("settings")}</CardTitle>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="text-sm">{t("settings")}</CardTitle>
           <CardDescription>{t("settingsHint")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           <Button
             variant="outline"
             disabled={busy}
@@ -1428,8 +1536,8 @@ function MonitorSettings({
       <form onSubmit={submit} className="space-y-6">
         {(["privacy", "nodes", "bandwidth"] as const).map((section) => (
           <Card key={section}>
-            <CardHeader>
-              <CardTitle>{t(`${section}Title`)}</CardTitle>
+            <CardHeader className="px-4">
+              <CardTitle className="text-sm">{t(`${section}Title`)}</CardTitle>
               <CardDescription>{t(`${section}SettingsHint`)}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5 md:grid-cols-2">
