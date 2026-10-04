@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
-import { GatewayCollector } from "./gateway.collector.js";
+import {
+  createTestDatabase,
+  createTestBackend,
+} from "../../__tests__/helpers.js";
+import { realtimeStore } from "../realtime/realtime.store.js";
+import { GatewayCollector, createCollector } from "./gateway.collector.js";
 
 describe("GatewayCollector heartbeat watchdog", () => {
   let servers: WebSocketServer[] = [];
@@ -95,4 +100,68 @@ describe("GatewayCollector heartbeat watchdog", () => {
     // live link.
     expect(connectionCount).toBe(1);
   });
+});
+
+describe("Router collector startup counting", () => {
+  it.each([
+    ["1", 250],
+    ["0", 1250],
+  ])(
+    "counts startup totals according to profile %s",
+    async (profile, expected) => {
+      vi.stubEnv("COLLECTOR_BASELINE_ON_START", profile);
+      const { db, cleanup } = createTestDatabase();
+      const backendId = createTestBackend(db);
+      const server = new WebSocketServer({ port: 0 });
+      await new Promise<void>((r) => server.once("listening", r));
+      const port = (server.address() as AddressInfo).port;
+      const collector = createCollector(
+        db,
+        `ws://127.0.0.1:${port}`,
+        undefined,
+        undefined,
+        undefined,
+        backendId,
+      );
+      try {
+        const connected = new Promise<import("ws").WebSocket>((r) =>
+          server.once("connection", r),
+        );
+        collector.connect();
+        const socket = await connected;
+        const frame = (download: number) =>
+          JSON.stringify({
+            connections: [
+              {
+                id: "persistent",
+                upload: 0,
+                download,
+                metadata: {
+                  host: "example.test",
+                  destinationIP: "192.0.2.1",
+                  sourceIP: "192.168.1.2",
+                },
+                chains: ["DIRECT"],
+                rule: "Match",
+              },
+            ],
+          });
+        socket.send(frame(1000));
+        await new Promise((r) => setTimeout(r, 40));
+        socket.send(frame(1250));
+        await new Promise((r) => setTimeout(r, 40));
+        collector.disconnect();
+        await vi.waitFor(() =>
+          expect(db.getGlobalSummary().totalDownload).toBe(expected),
+        );
+      } finally {
+        collector.disconnect();
+        for (const socket of server.clients) socket.terminate();
+        await new Promise<void>((r) => server.close(() => r()));
+        realtimeStore.clearBackend(backendId);
+        cleanup();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 });

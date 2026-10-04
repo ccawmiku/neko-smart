@@ -228,6 +228,8 @@ export function createCollector(
 ) {
   const id = backendId || 0;
   const activeConnections = new Map<string, TrackedConnection>();
+  const baselineOnStart = process.env.COLLECTOR_BASELINE_ON_START === "1";
+  let firstFrame = true;
   const batchBuffer = new BatchBuffer();
   let lastBroadcastTime = 0;
   const broadcastThrottleMs = 500;
@@ -445,8 +447,10 @@ export function createCollector(
         const existing = activeConnections.get(conn.id);
 
         if (!existing) {
-          // New connection - track it and record initial traffic
-          const hasInitialTraffic = conn.upload > 0 || conn.download > 0;
+          // Router restarts resume counting from the first snapshot, avoiding replay
+          // of long-lived connections already represented in the restored database.
+          const baseline = baselineOnStart && firstFrame;
+          const hasInitialTraffic = !baseline && (conn.upload > 0 || conn.download > 0);
           activeConnections.set(conn.id, {
             id: conn.id,
             domain,
@@ -458,7 +462,7 @@ export function createCollector(
             lastDownload: conn.download,
             totalUpload: conn.upload,
             totalDownload: conn.download,
-            counted: hasInitialTraffic,
+            counted: baseline || hasInitialTraffic,
             sourceIP,
             lastSeen: now,
           });
@@ -636,6 +640,7 @@ export function createCollector(
         }
       }
 
+      firstFrame = false;
       if (batchBuffer.size() >= FLUSH_MAX_BUFFER_SIZE) {
         flushBatch();
       }

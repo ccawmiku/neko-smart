@@ -13,6 +13,8 @@ DB_PATH="${DB_PATH:-/app/data/stats.db}"
 PERSIST_DIR="${PERSIST_DIR:-/app/persist}"
 if [ "${RAM_DATABASE:-0}" = 1 ]; then
     DB_PATH="/app/runtime/stats.db"
+    COLLECTOR_BASELINE_ON_START="${COLLECTOR_BASELINE_ON_START:-1}"
+    export COLLECTOR_BASELINE_ON_START
     mkdir -p /app/runtime "$PERSIST_DIR"
     export DB_PATH PERSIST_DIR
     node /app/tools/runtime-db.mjs --restore
