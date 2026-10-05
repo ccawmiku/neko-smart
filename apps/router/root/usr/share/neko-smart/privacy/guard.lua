@@ -71,8 +71,10 @@ function M.apply()
  local port=tonumber(cfg.dns_port or '53535')
  local interfaces={};for _,device in ipairs(cfg.lan_interface)do interfaces[#interfaces+1]=util.shellquote(device):gsub("'",'"') end
  assert(#interfaces>0,'LAN interface required')
+ -- flush table retains named maps and their elements. Recreate this owned table
+ -- in one nft transaction so repeated starts and fw4 reloads remain atomic.
  local nft=table.concat({
-  'add table inet neko_smart', 'flush table inet neko_smart',
+  'destroy table inet neko_smart', 'add table inet neko_smart',
   'table inet neko_smart {',
   ' map dns_route { type inet_service : inet_service; elements = { 53 : '..M.route_port()..' } }',
   ' chain dns_in { type nat hook prerouting priority -190; policy accept;',

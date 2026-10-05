@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=neko-smart-router
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=9
+PKG_RELEASE:=11
 PKG_LICENSE:=GPL-3.0-or-later ISC
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 include $(INCLUDE_DIR)/package.mk
@@ -16,13 +16,15 @@ define Package/neko-smart-router/conffiles
 /usr/share/neko-smart/protocols.txt
 endef
 
-define Package/neko-smart-router/prerm
+define Package/neko-smart-router/postinst
 #!/bin/sh
-# Explicit staged upgrades keep DNS and capture running until selected restarts.
-[ "$${IPKG_NO_SCRIPT}" = 1 ] && exit 0
-[ -s "$${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
-. "$${IPKG_INSTROOT}/lib/functions.sh"
-default_prerm $$0 $$@
+# OpenWrt generates an outer prerm that ignores IPKG_NO_SCRIPT. This hook
+# runs inside default_postinst, so never call default_postinst/prerm here.
+path="$${IPKG_INSTROOT}/usr/lib/opkg/info/neko-smart-router.prerm"
+if [ -f "$$path" ] && ! grep -q IPKG_NO_SCRIPT "$$path"; then
+ sed -i '2i [ "$${IPKG_NO_SCRIPT}" = "1" ] && exit 0' "$$path"
+fi
+exit 0
 endef
 define Build/Prepare
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)
