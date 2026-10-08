@@ -1394,12 +1394,23 @@ function Bandwidth({
 type Field = {
   section: "privacy" | "nodes" | "bandwidth";
   key: string;
-  type: "switch" | "number" | "text" | "list";
+  type: "switch" | "number" | "text" | "list" | "select";
   min?: number;
   max?: number;
+  options?: Array<{ label: string; value: string }>;
   defaultValue: string | string[];
 };
 const FIELDS: Field[] = [
+  {
+    section: "privacy",
+    key: "profile",
+    type: "select",
+    options: [
+      { label: "profile_full", value: "full" },
+      { label: "profile_guard", value: "guard" },
+    ],
+    defaultValue: "full",
+  },
   {
     section: "bandwidth",
     key: "database_limit",
@@ -1709,7 +1720,28 @@ function MonitorSettings({
                         />
                       )}
                     </label>
-                    {f.type !== "switch" && (
+                    {f.type === "select" ? (
+                      <select
+                        id={id}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        value={str(value)}
+                        onChange={(e) =>
+                          setSettings((s) => ({
+                            ...s,
+                            [section]: {
+                              ...obj(s[section]),
+                              [f.key]: e.target.value,
+                            },
+                          }))
+                        }
+                      >
+                        {f.options?.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {t(opt.label)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : f.type !== "switch" ? (
                       <Input
                         id={id}
                         required
@@ -1731,7 +1763,7 @@ function MonitorSettings({
                           }))
                         }
                       />
-                    )}
+                    ) : null}
                     <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                       {t(`hint_${f.key}`)}
                       {f.type === "number" && ` · ${f.min}–${f.max}`}

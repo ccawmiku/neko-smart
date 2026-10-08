@@ -14,10 +14,11 @@ function M.wan(configured)
 end
 function M.validate(data)
  if type(data)~='table' then return 'Configuration must be an object' end
- local allowed={monitor_enabled=1,dns_enabled=1,core_adapter=1,disable_offload=1,wan_interface=1,lan_interface=1,resolver_url=1,fallback_url=1,resolver_ips=1,fallback_ips=1,dns_port=1,watch_domain=1}
+ local allowed={monitor_enabled=1,dns_enabled=1,core_adapter=1,disable_offload=1,wan_interface=1,lan_interface=1,resolver_url=1,fallback_url=1,resolver_ips=1,fallback_ips=1,dns_port=1,watch_domain=1,profile=1}
  for k,v in pairs(data)do if type(k)~='string' or not allowed[k] then return 'Unknown configuration key' end;if k~='lan_interface' and k~='watch_domain' and k~='resolver_ips' and k~='fallback_ips' and type(v)~='string' then return k..' must be a string' end end
  for _,k in ipairs({'lan_interface','watch_domain','resolver_ips','fallback_ips'})do if data[k]~=nil then if type(data[k])~='table' or #data[k]>64 then return k..' must be a bounded array' end;local n=0;for i,v in pairs(data[k])do n=n+1;if type(i)~='number' or i%1~=0 or i<1 or i>#data[k] or type(v)~='string' then return 'Invalid '..k..' array' end end;if n~=#data[k] then return 'Invalid array' end end end
  for _,key in ipairs({'monitor_enabled','dns_enabled','core_adapter','disable_offload'}) do if data[key] and data[key]~='0' and data[key]~='1' then return key..' must be 0 or 1' end end
+ if data.profile and data.profile~='guard' and data.profile~='full' then return 'Invalid profile' end
  if data.wan_interface and data.wan_interface~='auto' and not identifier(data.wan_interface) then return 'Invalid WAN interface' end
  for _,item in ipairs(data.lan_interface or {}) do if not identifier(item) then return 'Invalid LAN interface' end end
  for _,key in ipairs({'resolver_url','fallback_url'}) do

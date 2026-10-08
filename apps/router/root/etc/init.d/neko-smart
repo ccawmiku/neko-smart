@@ -2,21 +2,66 @@
 START=19
 STOP=89
 USE_PROCD=1
+EXTRA_COMMANDS="guard full status_mode"
+EXTRA_HELP="	guard	Switch to lightweight DNS-guard-only mode (<5MB RAM, no monitoring/Docker)
+	full	Switch to full monitoring & telemetry mode
+	status_mode	Display active operating mode"
+
+guard() {
+	uci set neko_smart.main.profile='guard'
+	uci set neko_smart.main.dns_enabled='1'
+	uci commit neko_smart
+	echo "[neko-smart] Profile set to 'guard'. Restarting service..."
+	/etc/init.d/neko-smart restart
+	echo "[neko-smart] Guard-Only active: DNS protection running natively (<5MB RAM). Telemetry is stopped."
+}
+
+full() {
+	uci set neko_smart.main.profile='full'
+	uci set neko_smart.main.dns_enabled='1'
+	uci set neko_smart.main.monitor_enabled='1'
+	uci set neko_smart.nodes.enabled='1'
+	uci set neko_smart.bandwidth.enabled='1'
+	uci set neko_smart.report.enabled='1'
+	uci commit neko_smart
+	echo "[neko-smart] Profile set to 'full'. Restarting service..."
+	/etc/init.d/neko-smart restart
+	echo "[neko-smart] Full mode active: DNS protection & telemetry active."
+}
+
+status_mode() {
+	. /lib/functions.sh
+	config_load neko_smart
+	config_get profile main profile "full"
+	config_get_bool dns main dns_enabled 0
+	echo "Operating mode: $profile (DNS protection: $dns)"
+}
 
 start_service() {
- # Prepared migrations are activated only by the explicit cutover transaction.
- if [ -s /etc/neko-smart/migration.json ] && [ ! -e /var/run/neko-smart/cutover ]; then
-  lua -e 'local fs,json=require "nixio.fs",require "luci.jsonc";assert((json.parse(fs.readfile("/etc/neko-smart/migration.json")or "{}")or {}).active)' >/dev/null 2>&1 || return 0
- fi
- umask 077
- mkdir -p /var/run/neko-smart
- chmod 700 /var/run/neko-smart
- . /lib/functions.sh
- config_load neko_smart
- config_get_bool monitor main monitor_enabled 0
- config_get_bool dns main dns_enabled 0
- mkdir -p /var/run/neko-smart/privacy
- chmod 700 /var/run/neko-smart/privacy
+	# Prepared migrations are activated only by the explicit cutover transaction.
+	if [ -s /etc/neko-smart/migration.json ] && [ ! -e /var/run/neko-smart/cutover ]; then
+		lua -e 'local fs,json=require "nixio.fs",require "luci.jsonc";assert((json.parse(fs.readfile("/etc/neko-smart/migration.json")or "{}")or {}).active)' >/dev/null 2>&1 || return 0
+	fi
+	umask 077
+	mkdir -p /var/run/neko-smart
+	chmod 700 /var/run/neko-smart
+	. /lib/functions.sh
+	config_load neko_smart
+	config_get profile main profile "full"
+	config_get_bool dns main dns_enabled 0
+	if [ "$profile" = "guard" ]; then
+		monitor=0
+		nodes=0
+		accounting=0
+		reporting=0
+	else
+		config_get_bool monitor main monitor_enabled 0
+		config_get_bool nodes nodes enabled 0
+		config_get_bool accounting bandwidth enabled 0
+		config_get_bool reporting report enabled 0
+	fi
+	mkdir -p /var/run/neko-smart/privacy
+	chmod 700 /var/run/neko-smart/privacy
  if [ "$dns" = 1 ]; then
   /usr/share/neko-smart/privacy/guard.lua apply || return 1
   config_get resolver main resolver_url
@@ -68,47 +113,44 @@ start_service() {
   procd_set_param stderr 1
   procd_close_instance
  fi
- if [ "$monitor" = 1 ] || [ "$dns" = 1 ]; then
-  procd_open_instance summary
-  procd_set_param command /usr/bin/lua /usr/share/neko-smart/privacy/monitor.lua
-  procd_set_param nice 15
-  procd_set_param respawn 3600 5 5
-  procd_set_param limits core="0" as="67108864" nofile="64"
-  procd_set_param stdout 0
-  procd_set_param stderr 1
-  procd_close_instance
- fi
- config_get_bool nodes nodes enabled 0
- if [ "$nodes" = 1 ]; then
-  mkdir -p /var/run/neko-smart/nodes /etc/neko-smart/nodes
-  chmod 700 /var/run/neko-smart/nodes /etc/neko-smart/nodes
-  procd_open_instance nodes
-  procd_set_param command /usr/bin/lua /usr/share/neko-smart/nodes/daemon.lua
-  procd_set_param nice 15
-  procd_set_param respawn 3600 5 5
-  procd_set_param limits as="67108864" core="0" nofile="64"
-  procd_close_instance
- fi
- config_get_bool accounting bandwidth enabled 0
- if [ "$accounting" = 1 ]; then
-  /usr/share/neko-smart/accounting.sh prepare || return 1
-  procd_open_instance bandwidth
-  procd_set_param stderr 1
-  procd_set_param command /usr/share/neko-smart/accounting.sh run
-  procd_set_param nice 15
-  procd_set_param respawn 3600 5 5
-  procd_set_param limits as="67108864" core="0" nofile="128"
-  procd_close_instance
- fi
- config_get_bool reporting report enabled 0
- if [ "$reporting" = 1 ]; then
-  procd_open_instance reporter
-  procd_set_param command /usr/bin/lua /usr/share/neko-smart/report.lua
-  procd_set_param nice 15
-  procd_set_param respawn 3600 5 5
-  procd_set_param limits as="67108864" core="0" nofile="64"
-  procd_close_instance
- fi
+	if [ "$monitor" = 1 ]; then
+		procd_open_instance summary
+		procd_set_param command /usr/bin/lua /usr/share/neko-smart/privacy/monitor.lua
+		procd_set_param nice 15
+		procd_set_param respawn 3600 5 5
+		procd_set_param limits core="0" as="67108864" nofile="64"
+		procd_set_param stdout 0
+		procd_set_param stderr 1
+		procd_close_instance
+	fi
+	if [ "$nodes" = 1 ]; then
+		mkdir -p /var/run/neko-smart/nodes /etc/neko-smart/nodes
+		chmod 700 /var/run/neko-smart/nodes /etc/neko-smart/nodes
+		procd_open_instance nodes
+		procd_set_param command /usr/bin/lua /usr/share/neko-smart/nodes/daemon.lua
+		procd_set_param nice 15
+		procd_set_param respawn 3600 5 5
+		procd_set_param limits as="67108864" core="0" nofile="64"
+		procd_close_instance
+	fi
+	if [ "$accounting" = 1 ]; then
+		/usr/share/neko-smart/accounting.sh prepare || return 1
+		procd_open_instance bandwidth
+		procd_set_param stderr 1
+		procd_set_param command /usr/share/neko-smart/accounting.sh run
+		procd_set_param nice 15
+		procd_set_param respawn 3600 5 5
+		procd_set_param limits as="67108864" core="0" nofile="128"
+		procd_close_instance
+	fi
+	if [ "$reporting" = 1 ]; then
+		procd_open_instance reporter
+		procd_set_param command /usr/bin/lua /usr/share/neko-smart/report.lua
+		procd_set_param nice 15
+		procd_set_param respawn 3600 5 5
+		procd_set_param limits as="67108864" core="0" nofile="64"
+		procd_close_instance
+	fi
 
 }
 
@@ -120,4 +162,6 @@ service_triggers() {
 
 # A process crash/stop never removes active protection. Only explicit dns_enabled=0
 # and a reload removes the guard. OpenClash stop never calls this service.
-stop_service() { :; }
+stop_service() {
+	killall -9 neko-smart-observer neko-smart-account 2>/dev/null || true
+}

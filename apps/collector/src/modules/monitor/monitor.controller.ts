@@ -21,6 +21,7 @@ export function validateSettings(value: unknown): MonitorObject {
   };
   const sections: Record<string, string[]> = {
     privacy: [
+      "profile",
       "monitor_enabled",
       "dns_enabled",
       "core_adapter",
@@ -149,6 +150,8 @@ export function validateSettings(value: unknown): MonitorObject {
       } else {
         if (typeof v !== "string" || v.length > 512 || /[\r\n\0]/.test(v))
           throw new Error(`Invalid ${key}`);
+        if (key === "profile" && !["guard", "full"].includes(v))
+          throw new Error("Invalid profile: choose 'guard' or 'full'");
         if (flags.includes(key) && !["0", "1"].includes(v))
           throw new Error(`Invalid ${key}`);
         if (
