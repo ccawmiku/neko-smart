@@ -8,7 +8,7 @@ for _,node in pairs(db.nodes)do node.status='unknown';node.streak=0;node.down_si
 local function atomic(path,text)assert(fs.writefile(path..'.new',text));fs.chmod(path..'.new','600');assert(fs.rename(path..'.new',path))end
 local function run()
  uci:unload('neko_smart');local cfg=uci:get_all('neko_smart','nodes')or {}
- local interval=math.max(30,math.min(3600,tonumber(cfg.interval)or 120));local timeout=math.max(500,math.min(10000,tonumber(cfg.timeout)or 3000));local max=math.max(1,math.min(64,tonumber(cfg.max_nodes)or 32));local keep=math.max(30,math.min(360,tonumber(cfg.keep_samples)or 240))
+ local interval=math.max(30,math.min(3600,tonumber(cfg.interval)or 120));local timeout=math.max(500,math.min(10000,tonumber(cfg.timeout)or 3000));local max=math.max(1,math.min(64,tonumber(cfg.max_nodes)or 32));local keep=math.max(30,math.min(360,tonumber(cfg.keep_samples)or 120))
  local targets=type(cfg.targets)=='table' and cfg.targets or {cfg.targets or 'https://www.gstatic.com/generate_204'};local now=os.time()
  if now-inventory_time>=60 then
   local data,err=core.get('/proxies',2);db.core_state=data and 'available' or err;inventory_time=now
@@ -17,9 +17,8 @@ local function run()
    for name,node in pairs(data.proxies)do if type(node)=='table' and not node.all and not builtin[node.type] and #name<=256 then total=total+1;inventory[#inventory+1]={name=name,type=node.type}end end
    table.sort(inventory,function(a,b)return a.name<b.name end);db.discovered=total;db.capacity_limited=total>max;while #inventory>max do table.remove(inventory)end
    local names={};for _,item in ipairs(inventory)do names[item.name]=true;if not db.nodes[item.name]then db.nodes[item.name]=history.new(item.name,item.type,now)end;db.nodes[item.name].removed=false;db.nodes[item.name].type=item.type end
-   -- Limit archived nodes too; removed nodes do not silently consume unbounded RAM.
-   for name,node in pairs(db.nodes)do if builtin[node.type]then db.nodes[name]=nil elseif not names[name]then node.removed=true;node.status='removed';node.removed_at=node.removed_at or now end end
-   local retired={};for name,node in pairs(db.nodes)do if node.removed then retired[#retired+1]=name end end;table.sort(retired,function(a,b)return db.nodes[a].removed_at>db.nodes[b].removed_at end);for i=9,#retired do db.nodes[retired[i]]=nil end
+   -- Prune removed and builtin nodes immediately so deleted nodes do not linger or display.
+   for name,node in pairs(db.nodes)do if builtin[node.type] or not names[name] then db.nodes[name]=nil end end
   end
  end
  local due

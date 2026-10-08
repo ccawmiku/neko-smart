@@ -130,9 +130,10 @@ export class StatsDatabase {
   }
 
   private init() {
+    const defaultCacheMb = process.env.RAM_DATABASE === '1' ? 8 : 16;
     const sqliteCacheMb = Math.max(
-      16,
-      Number.parseInt(process.env.SQLITE_CACHE_MB || '64', 10) || 64,
+      4,
+      Number.parseInt(process.env.SQLITE_CACHE_MB || String(defaultCacheMb), 10) || defaultCacheMb,
     );
     const sqliteWalAutocheckpointPages = Math.max(
       100,
@@ -147,7 +148,7 @@ export class StatsDatabase {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.pragma(`wal_autocheckpoint = ${sqliteWalAutocheckpointPages}`);
-    this.db.pragma('temp_store = MEMORY');
+    this.db.pragma(process.env.RAM_DATABASE === '1' ? 'temp_store = FILE' : 'temp_store = MEMORY');
     this.db.pragma(`cache_size = -${sqliteCacheMb * 1024}`);
     this.db.pragma(`busy_timeout = ${sqliteBusyTimeoutMs}`);
 

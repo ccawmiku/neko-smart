@@ -248,8 +248,14 @@ export class RealtimeStore {
 
   private db: StatsDatabase | null = null;
 
-  constructor(maxMinutes = parseInt(process.env.REALTIME_MAX_MINUTES || '180', 10)) {
-    this.maxMinutes = Number.isFinite(maxMinutes) ? Math.max(30, maxMinutes) : 180;
+  constructor(
+    maxMinutes = parseInt(
+      process.env.REALTIME_MAX_MINUTES || (process.env.RAM_DATABASE === '1' ? '60' : '180'),
+      10,
+    ),
+  ) {
+    const fallbackMax = process.env.RAM_DATABASE === '1' ? 60 : 180;
+    this.maxMinutes = Number.isFinite(maxMinutes) ? Math.max(30, maxMinutes) : fallbackMax;
   }
 
   // Set database reference for persistence (call once during initialization)

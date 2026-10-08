@@ -93,7 +93,7 @@ fi
 
 BACKUP_PID=""
 if [ "${RAM_DATABASE:-0}" = 1 ]; then
-    node /app/tools/runtime-db.mjs &
+    NODE_OPTIONS="${BACKUP_NODE_OPTIONS:---max-old-space-size=32}" node /app/tools/runtime-db.mjs &
     BACKUP_PID=$!
 fi
 
@@ -103,6 +103,7 @@ cd /app/apps/web/.next/standalone/apps/web
   HOSTNAME=0.0.0.0 \
   NODE_ENV=production \
   PORT="${WEB_PORT}" \
+  NODE_OPTIONS="${WEB_NODE_OPTIONS:---max-old-space-size=80}" \
   node server.js &
 WEB_PID=$!
 

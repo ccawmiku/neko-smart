@@ -948,7 +948,8 @@ function Nodes({
   const { resolvedTheme } = useTheme();
   const color = resolvedTheme === "dark" ? "#60a5fa" : "#2563eb";
   const data = state.snapshot?.nodes ?? {};
-  const nodes = Object.values(obj(data.nodes)).map(obj);
+  const rawNodes = Object.values(obj(data.nodes)).map(obj);
+  const nodes = rawNodes.filter((n) => !n.removed && str(n.status) !== "removed");
   const [selected, setSelected] = useState("");
   const [nodeRange, setNodeRange] = useState("recent");
   const [probeBusy, setProbeBusy] = useState(false);
@@ -1527,7 +1528,7 @@ const FIELDS: Field[] = [
     type: "number",
     min: 30,
     max: 360,
-    defaultValue: "240",
+    defaultValue: "120",
   },
   { section: "nodes", key: "persistent", type: "switch", defaultValue: "1" },
   {

@@ -173,7 +173,7 @@ export class MonitorRepository {
             }
           : null,
       };
-      const minute = Math.floor(report.observedAt / 60_000) * 60_000;
+      const minute = Math.floor(report.observedAt / 120_000) * 120_000;
       this.db
         .prepare(
           `INSERT INTO monitor_history (backend_id, minute, observed_at, summary) VALUES (?, ?, ?, ?)

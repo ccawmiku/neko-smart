@@ -24,7 +24,7 @@ services:
       DB_BACKUP_INTERVAL: "3600"
       GEOIP_ALLOW_ONLINE: "0"
       FORCE_ACCESS_CONTROL_OFF: "true"
-      NODE_OPTIONS: "--max-old-space-size=160"
+      NODE_OPTIONS: "--max-old-space-size=128"
     volumes:
       - /overlay/neko-smart-center:/app/persist
     tmpfs:
