@@ -49,16 +49,15 @@ start_service() {
 	config_load neko_smart
 	config_get profile main profile "full"
 	config_get_bool dns main dns_enabled 0
+	config_get_bool reporting report enabled 0
 	if [ "$profile" = "guard" ]; then
 		monitor=0
 		nodes=0
 		accounting=0
-		reporting=0
 	else
 		config_get_bool monitor main monitor_enabled 0
 		config_get_bool nodes nodes enabled 0
 		config_get_bool accounting bandwidth enabled 0
-		config_get_bool reporting report enabled 0
 	fi
 	mkdir -p /var/run/neko-smart/privacy
 	chmod 700 /var/run/neko-smart/privacy
@@ -162,6 +161,4 @@ service_triggers() {
 
 # A process crash/stop never removes active protection. Only explicit dns_enabled=0
 # and a reload removes the guard. OpenClash stop never calls this service.
-stop_service() {
-	killall -9 neko-smart-observer neko-smart-account 2>/dev/null || true
-}
+stop_service() { :; }

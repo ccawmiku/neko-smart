@@ -108,6 +108,8 @@ while true do
    if privacy then
     privacy.config=guard.settings();privacy.monitor.report_truncated_flows=math.max(0,#safe_array(privacy.flows)-2048)
     while #safe_array(privacy.flows)>2048 do table.remove(privacy.flows)end
+   else
+    privacy={config=guard.settings(),flows={},monitor={report_truncated_flows=0}}
    end
    if nodes then
     for _,node in pairs(nodes.nodes or {})do node.summary=history.summary(node)end
