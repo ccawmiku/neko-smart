@@ -4,6 +4,7 @@ local guard=dofile('/usr/share/neko-smart/privacy/guard.lua')
 local history=dofile('/usr/share/neko-smart/nodes/history.lua')
 local openclash=dofile('/usr/share/neko-smart/openclash.lua')
 local account_scope=dofile('/usr/share/neko-smart/account-scope.lua')
+local report_state=dofile('/usr/share/neko-smart/report-state.lua')
 local root='/var/run/neko-smart/'
 fs.mkdirr(root);fs.chmod(root,'700')
 local boot=(fs.readfile('/proc/sys/kernel/random/boot_id')or tostring(os.time())):gsub('[^%w_-]','')..'-'..tostring(nixio.getpid())
@@ -11,12 +12,11 @@ local sequence=0;local archive_index=0;local counters={};local last_settings='';
 local function atomic(path,text)assert(fs.writefile(path..'.new',text));fs.chmod(path..'.new','600');assert(fs.rename(path..'.new',path))end
 local function read(path,limit)local s=fs.stat(path);if s and s.size<(limit or 8*1024*1024)then return json.parse(fs.readfile(path)or '')end end
 local function numeric(path)return tonumber(fs.readfile(path)or '')end
-local function safe_array(value)return type(value)=='table' and value or {}end
 local function bandwidth()
  local statuses={};local bus=require('ubus').connect()
  if bus then for _,name in ipairs({'lan','wan','wan6'})do local ok,status=pcall(bus.call,bus,'network.interface.'..name,'status',{});if ok and status then statuses[name]=status end end;bus:close()end
  local context=account_scope.context(statuses)
- local enabled=uci:get('neko_smart','bandwidth','enabled')=='1';local data=enabled and json.parse(require('luci.sys').exec('/usr/sbin/neko-smart-ledger -c json 2>/dev/null'))or nil
+ local enabled=uci:get('neko_smart','main','profile')~='guard' and uci:get('neko_smart','bandwidth','enabled')=='1';local data=enabled and json.parse(require('luci.sys').exec('/usr/sbin/neko-smart-ledger -c json 2>/dev/null'))or nil
  local periods={};local period_text=enabled and require('luci.sys').exec('/usr/sbin/neko-smart-ledger -c list 2>/dev/null')or '';local period=''
  for date in period_text:gmatch('%d%d%d%d%-%d%d%-%d%d')do if date>period then period=date end;periods[#periods+1]=date end;table.sort(periods,function(a,b)return a>b end);while #periods>24 do table.remove(periods)end
  local names={};local leases=fs.readfile("/tmp/dhcp.leases")or "";if #leases<65536 then for ip,name in leases:gmatch("%d+%s+[%x:]+%s+([^%s]+)%s+([^%s]+)")do if name~="*"then names[ip]=name end end end
@@ -104,13 +104,7 @@ while true do
  uci:unload('neko_smart');local interval=math.max(10,math.min(300,tonumber(uci:get('neko_smart','report','interval'))or 30));local backend=tonumber(uci:get('neko_smart','report','backend_id'))
  local ok,err=pcall(function()
   if not pending then
-   sequence=sequence+1;local privacy=read(root..'privacy/snapshot.json');local nodes=read(root..'nodes/history.json',1024*1024)
-   if privacy then
-    privacy.config=guard.settings();privacy.monitor.report_truncated_flows=math.max(0,#safe_array(privacy.flows)-2048)
-    while #safe_array(privacy.flows)>2048 do table.remove(privacy.flows)end
-   else
-    privacy={config=guard.settings(),flows={},monitor={report_truncated_flows=0}}
-   end
+   sequence=sequence+1;local privacy,nodes=report_state.current(read(root..'privacy/snapshot.json'),read(root..'nodes/history.json',1024*1024),guard.settings(),uci:get('neko_smart','nodes','enabled')=='1',os.time())
    if nodes then
     for _,node in pairs(nodes.nodes or {})do node.summary=history.summary(node)end
     nodes.probe_ack=read(root..'probe-ack.json')or json.null
