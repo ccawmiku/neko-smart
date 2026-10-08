@@ -19,7 +19,10 @@ import { join, dirname } from 'node:path';
 import { createGzip, createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 
-const require = createRequire('/app/apps/collector/package.json');
+const collectorPkg = existsSync('/app/apps/collector/package.json')
+  ? '/app/apps/collector/package.json'
+  : join(process.cwd(), 'apps/collector/package.json');
+const require = createRequire(existsSync(collectorPkg) ? collectorPkg : import.meta.url);
 const Database = require('better-sqlite3');
 const source = process.env.DB_PATH;
 const directory = process.env.PERSIST_DIR || '/app/persist';
@@ -75,30 +78,45 @@ async function backup() {
     await compressFile(temporary, temporaryGz);
     unlinkSync(temporary);
 
-    const fd = openSync(temporaryGz, 'r');
+    const fd = openSync(temporaryGz, 'r+');
     try {
       fsyncSync(fd);
     } finally {
       closeSync(fd);
     }
 
-    // Rotate existing compressed and legacy uncompressed snapshots
+    // Rotate existing compressed or legacy uncompressed snapshots
     if (existsSync(targetGz)) {
       renameSync(targetGz, previousGz);
     } else if (existsSync(target)) {
-      await compressFile(target, previousGz);
-      unlinkSync(target);
-    }
-    if (existsSync(previous)) {
-      unlinkSync(previous);
+      try {
+        await compressFile(target, previousGz);
+      } catch (err) {
+        console.warn('[database] Failed to compress legacy target to previousGz:', err);
+      }
     }
 
     renameSync(temporaryGz, targetGz);
-    const dir = openSync(dirname(targetGz), 'r');
-    try {
-      fsyncSync(dir);
-    } finally {
-      closeSync(dir);
+
+    if (process.platform !== 'win32') {
+      try {
+        const dir = openSync(dirname(targetGz), 'r');
+        try {
+          fsyncSync(dir);
+        } finally {
+          closeSync(dir);
+        }
+      } catch {
+        // Ignored if directory fsync not supported on the target filesystem
+      }
+    }
+
+    // Clean up lingering uncompressed legacy backups now that the new compressed snapshot is reliably synced to disk
+    if (existsSync(target)) {
+      try { unlinkSync(target); } catch {}
+    }
+    if (existsSync(previous)) {
+      try { unlinkSync(previous); } catch {}
     }
 
     console.info(`[database] Backup saved (compressed): ${statSync(targetGz).size} bytes`);
@@ -119,7 +137,7 @@ if (process.argv.includes('--restore')) {
   mkdirSync(dirname(source), { recursive: true, mode: 0o700 });
   if (!existsSync(source)) {
     let restored = false;
-    const candidates = [targetGz, target, previousGz, previous];
+    const candidates = [targetGz, previousGz, target, previous];
     for (const file of candidates) {
       if (existsSync(file)) {
         try {
